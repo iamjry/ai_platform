@@ -1,0 +1,1175 @@
+import streamlit as st
+import requests
+import os
+import time
+import base64
+from io import BytesIO
+from PyPDF2 import PdfReader
+from i18n import LANGUAGES, get_text
+
+# Initialize session state for language
+if "language" not in st.session_state:
+    st.session_state.language = "zh-TW"  # Default to Traditional Chinese
+
+lang = st.session_state.language
+
+st.set_page_config(
+    page_title=get_text("page_title", lang),
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "http://agent-service:8000")
+LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:4000")
+
+# Model context limits (conservative estimates to account for system prompt and tools)
+MODEL_CONTEXT_LIMITS = {
+    "qwen2.5": {
+        "total_tokens": 32000,
+        "safe_limit": 24000,
+        "avg_tokens_per_message": 150
+    },
+    "qwen2.5-7b": {
+        "total_tokens": 32000,
+        "safe_limit": 24000,
+        "avg_tokens_per_message": 150
+    },
+    "gpt-3.5-turbo": {
+        "total_tokens": 16385,
+        "safe_limit": 12000,
+        "avg_tokens_per_message": 100
+    },
+    "gpt-4": {
+        "total_tokens": 128000,
+        "safe_limit": 96000,
+        "avg_tokens_per_message": 150
+    },
+    "gpt-4o": {
+        "total_tokens": 128000,
+        "safe_limit": 96000,
+        "avg_tokens_per_message": 150
+    },
+    "gpt-4o-mini": {
+        "total_tokens": 128000,
+        "safe_limit": 96000,
+        "avg_tokens_per_message": 150
+    },
+    "claude-3-opus": {
+        "total_tokens": 200000,
+        "safe_limit": 150000,
+        "avg_tokens_per_message": 200
+    },
+    "claude-3-sonnet": {
+        "total_tokens": 200000,
+        "safe_limit": 150000,
+        "avg_tokens_per_message": 200
+    },
+    "claude-3-5-sonnet": {
+        "total_tokens": 200000,
+        "safe_limit": 150000,
+        "avg_tokens_per_message": 200
+    },
+    "claude-3-haiku": {
+        "total_tokens": 200000,
+        "safe_limit": 150000,
+        "avg_tokens_per_message": 200
+    },
+    "gemini-1.5-pro": {
+        "total_tokens": 1000000,
+        "safe_limit": 750000,
+        "avg_tokens_per_message": 200
+    },
+    "gemini-1.5-flash": {
+        "total_tokens": 1000000,
+        "safe_limit": 750000,
+        "avg_tokens_per_message": 150
+    }
+}
+
+def estimate_tokens(text):
+    """Rough estimate: ~4 characters per token"""
+    return len(text) // 4
+
+def truncate_conversation_history(history, model, max_messages=None):
+    """Truncate conversation history to fit within model context limits"""
+    if not history:
+        return history
+
+    limits = MODEL_CONTEXT_LIMITS.get(model, MODEL_CONTEXT_LIMITS["gpt-3.5-turbo"])
+
+    # If max_messages specified, use that
+    if max_messages:
+        return history[-max_messages * 2:]  # Keep last N exchanges (user + assistant pairs)
+
+    # Otherwise, estimate tokens and truncate
+    estimated_tokens = sum(estimate_tokens(msg["content"]) for msg in history)
+
+    if estimated_tokens <= limits["safe_limit"]:
+        return history
+
+    # Truncate from the beginning, keeping most recent messages
+    # Always keep at least the last 4 messages (2 exchanges)
+    min_messages = 4
+    truncated = history[-min_messages:]
+
+    # Add more messages if we have room
+    for i in range(len(history) - min_messages - 1, -1, -1):
+        msg = history[i]
+        msg_tokens = estimate_tokens(msg["content"])
+        current_tokens = sum(estimate_tokens(m["content"]) for m in truncated)
+
+        if current_tokens + msg_tokens < limits["safe_limit"]:
+            truncated.insert(0, msg)
+        else:
+            break
+
+    return truncated
+
+def get_context_usage_info(history, model):
+    """Get context usage information"""
+    if not history:
+        return {"messages": 0, "estimated_tokens": 0, "percentage": 0}
+
+    limits = MODEL_CONTEXT_LIMITS.get(model, MODEL_CONTEXT_LIMITS["gpt-3.5-turbo"])
+    estimated_tokens = sum(estimate_tokens(msg["content"]) for msg in history)
+    percentage = (estimated_tokens / limits["safe_limit"]) * 100
+
+    return {
+        "messages": len(history),
+        "estimated_tokens": estimated_tokens,
+        "safe_limit": limits["safe_limit"],
+        "percentage": round(percentage, 1)
+    }
+
+# Custom CSS
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1f77b4;
+        text-align: center;
+        padding: 1rem;
+    }
+    .status-box {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        margin: 0.5rem 0;
+    }
+    .status-healthy {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+    }
+    .status-unhealthy {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Sidebar
+with st.sidebar:
+    # Logo and Title at top of sidebar
+    st.markdown("""
+    <div style="text-align: center; margin: -0.5rem 0 0 0; padding: 0;">
+        <div style="font-size: 2rem; line-height: 1; margin: 0;">🤖</div>
+        <h3 style="margin: 0; padding: 0; color: #1f77b4; font-weight: 700; font-size: 1rem; line-height: 1;">AI Agents Platform</h3>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.divider()
+
+    st.header(get_text("settings", lang))
+
+    # Language selector
+    selected_lang = st.selectbox(
+        get_text("language", lang),
+        options=list(LANGUAGES.keys()),
+        format_func=lambda x: LANGUAGES[x],
+        index=list(LANGUAGES.keys()).index(st.session_state.language),
+        key="lang_selector"
+    )
+
+    if selected_lang != st.session_state.language:
+        st.session_state.language = selected_lang
+        st.rerun()
+
+    # Model options with display names
+    model_options = {
+        "qwen2.5:7b (local - better for PDFs)": "qwen2.5-7b",
+        "qwen2.5:0.5b (local - fast chat)": "qwen2.5",
+        "gpt-4o (OpenAI)": "gpt-4o",
+        "gpt-4o-mini (OpenAI)": "gpt-4o-mini",
+        "gpt-4 (OpenAI)": "gpt-4",
+        "gpt-3.5-turbo (OpenAI)": "gpt-3.5-turbo",
+        "claude-3-5-sonnet (Anthropic)": "claude-3-5-sonnet",
+        "claude-3-opus (Anthropic)": "claude-3-opus",
+        "claude-3-sonnet (Anthropic)": "claude-3-sonnet",
+        "claude-3-haiku (Anthropic)": "claude-3-haiku",
+        "gemini-1.5-pro (Google)": "gemini-1.5-pro",
+        "gemini-1.5-flash (Google)": "gemini-1.5-flash"
+    }
+
+    model_display = st.selectbox(
+        get_text("select_model", lang),
+        options=list(model_options.keys()),
+        help=get_text("model_help", lang)
+    )
+
+    model_choice = model_options[model_display]
+
+    # Show model information
+    st.markdown("---")
+    st.subheader("📋 " + ("模型資訊" if lang == "zh-TW" else "Model Information"))
+
+    # Get model info
+    model_info = MODEL_CONTEXT_LIMITS.get(model_choice, {})
+
+    # Display model details in a nice format
+    col_info1, col_info2 = st.columns(2)
+
+    with col_info1:
+        # Model name and provider
+        if model_choice.startswith("qwen"):
+            st.info(f"**Provider:** Local (Ollama)\n\n**Status:** ✅ No API key needed")
+        elif model_choice.startswith("gpt"):
+            st.info(f"**Provider:** OpenAI\n\n**Status:** ⚠️ API key required")
+        elif model_choice.startswith("claude"):
+            st.info(f"**Provider:** Anthropic\n\n**Status:** ⚠️ API key required")
+        elif model_choice.startswith("gemini"):
+            st.info(f"**Provider:** Google\n\n**Status:** ⚠️ API key required")
+
+    with col_info2:
+        # Context window info
+        if model_info:
+            st.info(f"**Context Window:** {model_info.get('total_tokens', 'N/A'):,} tokens\n\n**Safe Limit:** {model_info.get('safe_limit', 'N/A'):,} tokens")
+
+    # Model capabilities
+    vision_models = ["gpt-4o", "gpt-4o-mini", "claude-3-opus", "claude-3-5-sonnet", "claude-3-sonnet", "gemini-1.5-pro", "gemini-1.5-flash"]
+    capabilities = []
+    if model_choice in vision_models:
+        capabilities.append("🖼️ Vision")
+    if model_choice.startswith("qwen") or model_choice.startswith("claude"):
+        capabilities.append("📄 PDF Analysis")
+    if model_choice in ["gpt-4o", "gpt-4", "claude-3-opus", "claude-3-5-sonnet", "gemini-1.5-pro"]:
+        capabilities.append("🧠 Advanced Reasoning")
+
+    if capabilities:
+        st.caption("**Capabilities:** " + " • ".join(capabilities))
+
+    st.markdown("---")
+
+    # Sampling parameters
+    st.subheader("🎛️ " + ("採樣參數" if lang == "zh-TW" else "Sampling Parameters"))
+
+    temperature = st.slider(
+        get_text("temperature", lang),
+        0.0, 1.0, 0.7,
+        help=get_text("temperature_help", lang)
+    )
+
+    top_p = st.slider(
+        "Top-P (nucleus sampling)",
+        0.0, 1.0, 0.9,
+        help="Controls diversity via nucleus sampling. Lower values make output more focused, higher values more diverse."
+    )
+
+    top_k = st.slider(
+        "Top-K",
+        0, 100, 40,
+        help="Limits sampling to top K tokens. 0 means no limit. Lower values make output more focused."
+    )
+
+    st.divider()
+
+    # Always show Context Information section
+    st.subheader("💬 " + ("對話上下文" if lang == "zh-TW" else "Context Info"))
+
+    # Show model context limits
+    if model_choice in MODEL_CONTEXT_LIMITS:
+        limits = MODEL_CONTEXT_LIMITS[model_choice]
+        st.info(f"📊 **{model_choice}**\n\nMax Context: {limits['total_tokens']:,} tokens\nSafe Limit: {limits['safe_limit']:,} tokens")
+
+    # Show context usage if there's conversation history
+    if "conversation_history" in st.session_state and st.session_state.conversation_history:
+        usage = get_context_usage_info(st.session_state.conversation_history, model_choice)
+
+        # Color based on usage
+        if usage["percentage"] < 50:
+            color = "🟢"
+        elif usage["percentage"] < 80:
+            color = "🟡"
+        else:
+            color = "🔴"
+
+        st.metric(
+            label="Current Usage",
+            value=f"{usage['percentage']}%",
+            delta=f"{usage['messages']} messages"
+        )
+        st.caption(f"{color} {usage['estimated_tokens']:,} / {usage['safe_limit']:,} tokens")
+
+        if usage["percentage"] > 80:
+            st.warning("⚠️ " + ("接近上下文限制！" if lang == "zh-TW" else "Near context limit!"))
+    else:
+        st.caption("💭 " + ("開始對話後會顯示使用情況" if lang == "zh-TW" else "Start a conversation to see usage"))
+
+    st.divider()
+
+    # System Status
+    st.header(get_text("system_status", lang))
+
+    with st.spinner(get_text("checking_status", lang)):
+        # Check Agent service
+        try:
+            resp = requests.get(f"{AGENT_SERVICE_URL}/health", timeout=3)
+            if resp.ok:
+                st.success(get_text("agent_service_ok", lang))
+                health_data = resp.json()
+                if "services" in health_data:
+                    for service, status in health_data["services"].items():
+                        if "connected" in str(status):
+                            st.text(f"  └─ {service}: ✓")
+                        else:
+                            st.text(f"  └─ {service}: ✗")
+            else:
+                st.error(get_text("agent_service_error", lang))
+        except Exception as e:
+            st.error(get_text("agent_service_offline", lang))
+            st.caption(f"{get_text('error', lang)}: {str(e)}")
+
+    st.divider()
+
+    # Quick Actions
+    st.header(get_text("quick_actions", lang))
+    if st.button(get_text("clear_chat", lang)):
+        st.session_state.messages = []
+        st.session_state.conversation_history = []  # Also clear conversation history
+        st.rerun()
+
+    if st.button(get_text("export_chat", lang)):
+        if "messages" in st.session_state and st.session_state.messages:
+            conversation = "\n\n".join([
+                f"{msg['role'].upper()}: {msg['content']}"
+                for msg in st.session_state.messages
+            ])
+            st.download_button(
+                get_text("download_chat", lang),
+                conversation,
+                file_name="conversation.txt",
+                mime="text/plain"
+            )
+        else:
+            st.info(get_text("no_chat_history", lang))
+
+# Main Content
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    get_text("tab_chat", lang),
+    get_text("tab_agent", lang),
+    get_text("tab_monitor", lang),
+    "📚 Documentation",
+    get_text("tab_about", lang)
+])
+
+with tab1:
+    st.header(get_text("chat_header", lang))
+    st.caption(get_text("chat_caption", lang))
+
+    # Initialize chat history
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Initialize conversation history for multi-stage conversations
+    if "conversation_history" not in st.session_state:
+        st.session_state.conversation_history = []
+
+    # Initialize uploaded files
+    if "uploaded_files" not in st.session_state:
+        st.session_state.uploaded_files = []
+
+    # File upload and web search options (Claude.ai style)
+    with st.expander("📎 Attachments & Options", expanded=False):
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            uploaded_files = st.file_uploader(
+                "Upload files (images, documents, etc.)",
+                accept_multiple_files=True,
+                type=['png', 'jpg', 'jpeg', 'gif', 'pdf', 'txt', 'md', 'csv', 'json', 'xml'],
+                key="file_uploader"
+            )
+
+        with col2:
+            web_search_enabled = st.checkbox(
+                "🌐 Web Search",
+                value=False,
+                help="Enable web search for real-time information"
+            )
+
+        # Display uploaded files
+        if uploaded_files:
+            st.write("**Attached files:**")
+            for file in uploaded_files:
+                file_size = len(file.getvalue()) / 1024  # KB
+                st.caption(f"📄 {file.name} ({file_size:.1f} KB)")
+
+    # Display chat history
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+            # Show attached files if any
+            if message.get("files"):
+                with st.expander("📎 Attachments"):
+                    for file_info in message["files"]:
+                        st.caption(f"📄 {file_info['name']}")
+
+            # Show conversation indicator if this was part of a multi-stage conversation
+            if message.get("needs_more_info"):
+                st.caption("💬 Waiting for more information...")
+
+    # Chat input
+    if prompt := st.chat_input(get_text("chat_input", lang)):
+        # Process uploaded files
+        file_contents = []
+        file_info_list = []
+        if uploaded_files:
+            for file in uploaded_files:
+                file_bytes = file.getvalue()
+                file_name = file.name
+                file_type = file.type
+
+                # Handle different file types
+                if file_type.startswith('image/'):
+                    # Encode image as base64
+                    base64_image = base64.b64encode(file_bytes).decode('utf-8')
+                    file_contents.append({
+                        "type": "image",
+                        "name": file_name,
+                        "data": base64_image,
+                        "mime_type": file_type
+                    })
+                elif file_type == 'application/pdf':
+                    # Extract PDF text content
+                    try:
+                        pdf_reader = PdfReader(BytesIO(file_bytes))
+                        text_content = ""
+                        for page in pdf_reader.pages:
+                            text_content += page.extract_text() + "\n"
+                        file_contents.append({
+                            "type": "text",
+                            "name": file_name,
+                            "content": text_content,
+                            "pages": len(pdf_reader.pages)
+                        })
+                    except Exception as e:
+                        # If PDF extraction fails, provide error info
+                        file_contents.append({
+                            "type": "file",
+                            "name": file_name,
+                            "size": len(file_bytes),
+                            "error": f"Failed to extract PDF: {str(e)}"
+                        })
+                elif file_type in ['text/plain', 'text/markdown', 'text/csv', 'application/json']:
+                    # Extract text content
+                    text_content = file_bytes.decode('utf-8')
+                    file_contents.append({
+                        "type": "text",
+                        "name": file_name,
+                        "content": text_content
+                    })
+                else:
+                    # For other files, provide basic info
+                    file_contents.append({
+                        "type": "file",
+                        "name": file_name,
+                        "size": len(file_bytes)
+                    })
+
+                file_info_list.append({"name": file_name, "type": file_type})
+
+        # Build enhanced prompt with file context
+        enhanced_prompt = prompt
+        has_images = False
+
+        if file_contents:
+            # Check if we have images
+            has_images = any(fc["type"] == "image" for fc in file_contents)
+
+            # Add text file contexts
+            text_files = [fc for fc in file_contents if fc["type"] == "text"]
+            if text_files:
+                # Add explicit instruction for document analysis
+                files_context = "\n\n===== IMPORTANT: DOCUMENT ANALYSIS REQUIRED =====\n"
+                files_context += "User has uploaded document(s). Please analyze the content below and respond to the user's question based on this document.\n\n"
+
+                for fc in text_files:
+                    # For PDF files, include more content (up to 10000 chars for better understanding)
+                    # For other text files, include full content or 5000 chars
+                    if fc['name'].endswith('.pdf'):
+                        max_chars = 10000
+                        content_preview = fc['content'][:max_chars]
+                        truncated = len(fc['content']) > max_chars
+                        if truncated:
+                            files_context += f"\n[DOCUMENT: {fc['name']} - {fc.get('pages', '?')} pages PDF - First {max_chars} characters shown]\n"
+                            files_context += f"---BEGIN DOCUMENT CONTENT---\n{content_preview}\n---END DOCUMENT CONTENT (TRUNCATED)---\n"
+                        else:
+                            files_context += f"\n[DOCUMENT: {fc['name']} - {fc.get('pages', '?')} pages PDF - Complete Content]\n"
+                            files_context += f"---BEGIN DOCUMENT CONTENT---\n{content_preview}\n---END DOCUMENT CONTENT---\n"
+                    else:
+                        max_chars = 5000
+                        content_preview = fc['content'][:max_chars]
+                        truncated = len(fc['content']) > max_chars
+                        if truncated:
+                            files_context += f"\n[DOCUMENT: {fc['name']} - First {max_chars} characters shown]\n"
+                            files_context += f"---BEGIN DOCUMENT CONTENT---\n{content_preview}\n---END DOCUMENT CONTENT (TRUNCATED)---\n"
+                        else:
+                            files_context += f"\n[DOCUMENT: {fc['name']} - Complete Content]\n"
+                            files_context += f"---BEGIN DOCUMENT CONTENT---\n{content_preview}\n---END DOCUMENT CONTENT---\n"
+
+                files_context += "\n===== END OF DOCUMENT(S) =====\n\nUser's Question: "
+                enhanced_prompt = files_context + prompt
+
+            # For images, we'll add them separately to the API call
+            vision_models = ["gpt-4o", "gpt-4o-mini", "claude-3-opus", "claude-3-5-sonnet", "claude-3-sonnet", "gemini-1.5-pro", "gemini-1.5-flash"]
+            if has_images and model_choice not in vision_models:
+                # Show error message with available vision models
+                if lang == "zh-TW":
+                    error_msg = """
+                    ⚠️ **所選模型不支援圖像輸入**
+
+                    您上傳了圖片，但當前選擇的模型 `{}` 無法處理圖像。
+
+                    **請選擇以下支援視覺功能的模型之一：**
+                    - gpt-4o (OpenAI)
+                    - gpt-4o-mini (OpenAI)
+                    - claude-3-5-sonnet (Anthropic)
+                    - claude-3-opus (Anthropic)
+                    - claude-3-sonnet (Anthropic)
+                    - gemini-1.5-pro (Google)
+                    - gemini-1.5-flash (Google)
+
+                    請從左側欄更換模型後再試。
+                    """.format(model_choice)
+                else:
+                    error_msg = """
+                    ⚠️ **Selected model doesn't support vision**
+
+                    You have uploaded image(s), but the current model `{}` cannot process images.
+
+                    **Please select one of these vision-capable models:**
+                    - gpt-4o (OpenAI)
+                    - gpt-4o-mini (OpenAI)
+                    - claude-3-5-sonnet (Anthropic)
+                    - claude-3-opus (Anthropic)
+                    - claude-3-sonnet (Anthropic)
+                    - gemini-1.5-pro (Google)
+                    - gemini-1.5-flash (Google)
+
+                    Please change your model selection in the sidebar and try again.
+                    """.format(model_choice)
+
+                st.error(error_msg)
+                st.stop()  # Prevent submission
+
+        if web_search_enabled:
+            enhanced_prompt = f"[WEB_SEARCH_ENABLED] {enhanced_prompt}"
+
+        # Add user message
+        st.session_state.messages.append({
+            "role": "user",
+            "content": prompt,
+            "files": file_info_list if file_info_list else None
+        })
+
+        with st.chat_message("user"):
+            st.markdown(prompt)
+            if file_info_list:
+                with st.expander("📎 Attachments"):
+                    for file_info in file_info_list:
+                        st.caption(f"📄 {file_info['name']}")
+
+        # Generate response
+        with st.chat_message("assistant"):
+            with st.spinner(get_text("thinking", lang)):
+                try:
+                    start_time = time.time()
+
+                    # Truncate conversation history to fit within context limits
+                    truncated_history = truncate_conversation_history(
+                        st.session_state.conversation_history,
+                        model_choice
+                    )
+
+                    # Show truncation warning if needed
+                    if len(truncated_history) < len(st.session_state.conversation_history):
+                        removed = len(st.session_state.conversation_history) - len(truncated_history)
+                        st.caption(f"ℹ️ {removed} " + ("條舊消息已移除以節省上下文空間" if lang == "zh-TW" else "old messages removed to save context"))
+
+                    # Build request payload
+                    request_payload = {
+                        "task": enhanced_prompt,
+                        "model": model_choice,
+                        "conversation_history": truncated_history,
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "top_k": top_k
+                    }
+
+                    # Add image data for vision models
+                    if has_images and file_contents:
+                        image_files = [fc for fc in file_contents if fc["type"] == "image"]
+                        if image_files:
+                            # Add images to context
+                            request_payload["images"] = []
+                            for img in image_files:
+                                request_payload["images"].append({
+                                    "name": img["name"],
+                                    "data": img["data"],
+                                    "mime_type": img["mime_type"]
+                                })
+
+                    # Use /agent/execute endpoint with conversation history support
+                    # Longer timeout for PDF processing with qwen2.5:7b (180 seconds)
+                    response = requests.post(
+                        f"{AGENT_SERVICE_URL}/agent/execute",
+                        json=request_payload,
+                        timeout=180
+                    )
+
+                    elapsed_time = time.time() - start_time
+
+                    if response.ok:
+                        result = response.json()
+                        answer = result["result"]
+                        needs_more_info = result.get("needs_more_info", False)
+                        conversation_active = result.get("metadata", {}).get("conversation_active", False)
+
+                        # Display the response
+                        st.markdown(answer)
+
+                        # Show conversation status
+                        if needs_more_info or conversation_active:
+                            st.info("💬 " + ("請繼續提供資訊..." if lang == "zh-TW" else "Please provide more information..."))
+
+                        # Show metadata
+                        with st.expander(get_text("view_details", lang)):
+                            metadata_display = {
+                                get_text("model", lang): result.get("metadata", {}).get("model_used", model_choice),
+                                get_text("response_time", lang): f"{elapsed_time:.2f}{get_text('seconds', lang)}",
+                                "Tokens Used": result.get("metadata", {}).get("tokens_used", "N/A")
+                            }
+
+                            if needs_more_info:
+                                metadata_display["Status"] = "Waiting for more info" if lang == "en" else "等待更多資訊"
+
+                            st.json(metadata_display)
+
+                            # Show execution steps if available
+                            if result.get("steps"):
+                                st.markdown("**Execution Steps:**")
+                                for step in result["steps"]:
+                                    st.text(f"• {step.get('step', 'Unknown')}: {step.get('status', 'unknown')}")
+
+                        # Update conversation history for multi-stage conversations
+                        if needs_more_info or conversation_active:
+                            st.session_state.conversation_history.append({
+                                "role": "user",
+                                "content": prompt
+                            })
+                            st.session_state.conversation_history.append({
+                                "role": "assistant",
+                                "content": answer
+                            })
+                        else:
+                            # Task completed, clear conversation history
+                            st.session_state.conversation_history = []
+
+                        # Add to display messages
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": answer,
+                            "needs_more_info": needs_more_info
+                        })
+                    else:
+                        error_msg = f"❌ {get_text('error', lang)}: {response.text}"
+                        st.error(error_msg)
+                        st.session_state.messages.append({
+                            "role": "assistant",
+                            "content": error_msg
+                        })
+                        # Clear conversation history on error
+                        st.session_state.conversation_history = []
+
+                except requests.exceptions.Timeout:
+                    error_msg = get_text("request_timeout", lang)
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                    st.session_state.conversation_history = []
+                except Exception as e:
+                    error_msg = f"{get_text('request_failed', lang)}: {str(e)}"
+                    st.error(error_msg)
+                    st.session_state.messages.append({
+                        "role": "assistant",
+                        "content": error_msg
+                    })
+                    st.session_state.conversation_history = []
+
+with tab2:
+    st.header(get_text("agent_header", lang))
+    st.caption(get_text("agent_caption", lang))
+
+    # Initialize selected_example in session state
+    if "selected_example" not in st.session_state:
+        st.session_state.selected_example = ""
+
+    # Initialize agent tab conversation history
+    if "agent_conversation_history" not in st.session_state:
+        st.session_state.agent_conversation_history = []
+
+    # Initialize agent conversation messages for display
+    if "agent_messages" not in st.session_state:
+        st.session_state.agent_messages = []
+
+    # Show conversation history
+    if st.session_state.agent_messages:
+        st.subheader("💬 " + ("對話歷史" if lang == "zh-TW" else "Conversation History"))
+        for msg in st.session_state.agent_messages:
+            if msg["role"] == "user":
+                st.info(f"**You:** {msg['content']}")
+            else:
+                st.success(f"**Agent:** {msg['content']}")
+
+        st.divider()
+
+    col1, col2 = st.columns([3, 1])
+
+    with col1:
+        task = st.text_area(
+            get_text("describe_task", lang),
+            height=150,
+            placeholder=get_text("task_placeholder", lang),
+            value=st.session_state.selected_example,
+            key="task_input"
+        )
+
+    with col2:
+        agent_type = st.selectbox(
+            get_text("agent_type", lang),
+            ["general", "research", "analysis"],
+            help=get_text("agent_type_help", lang)
+        )
+
+        execute_button = st.button(get_text("execute_task", lang), use_container_width=True)
+
+        # Add clear conversation button
+        if st.session_state.agent_conversation_history:
+            if st.button("🔄 " + ("重置對話" if lang == "zh-TW" else "Reset Conversation"), use_container_width=True):
+                st.session_state.agent_conversation_history = []
+                st.session_state.agent_messages = []
+                st.rerun()
+
+    if execute_button and task:
+        # Clear the selected example after execution starts
+        st.session_state.selected_example = ""
+
+        with st.spinner(get_text("executing", lang)):
+            try:
+                start_time = time.time()
+
+                response = requests.post(
+                    f"{AGENT_SERVICE_URL}/agent/execute",
+                    json={
+                        "task": task,
+                        "agent_type": agent_type,
+                        "model": model_choice,
+                        "conversation_history": st.session_state.agent_conversation_history,
+                        "temperature": temperature,
+                        "top_p": top_p,
+                        "top_k": top_k
+                    },
+                    timeout=180
+                )
+
+                elapsed_time = time.time() - start_time
+
+                if response.ok:
+                    result = response.json()
+                    needs_more_info = result.get("needs_more_info", False)
+                    conversation_active = result.get("metadata", {}).get("conversation_active", False)
+
+                    # Add user message to conversation display
+                    st.session_state.agent_messages.append({
+                        "role": "user",
+                        "content": task
+                    })
+
+                    # Add agent response to conversation display
+                    st.session_state.agent_messages.append({
+                        "role": "assistant",
+                        "content": result["result"]
+                    })
+
+                    # Update conversation history if more info needed
+                    if needs_more_info or conversation_active:
+                        st.session_state.agent_conversation_history.append({
+                            "role": "user",
+                            "content": task
+                        })
+                        st.session_state.agent_conversation_history.append({
+                            "role": "assistant",
+                            "content": result["result"]
+                        })
+
+                        # Show that conversation is active
+                        st.info("💬 " + ("請在上方文字框繼續提供資訊，然後點擊「執行任務」" if lang == "zh-TW" else "Please provide more information in the text box above and click 'Execute Task'"))
+                    else:
+                        # Task completed, clear conversation history
+                        st.session_state.agent_conversation_history = []
+                        st.success(get_text("task_complete", lang, time=f"{elapsed_time:.2f}"))
+
+                    # Show result
+                    st.subheader(get_text("execution_result", lang))
+                    st.write(result["result"])
+
+                    # Show execution steps
+                    with st.expander(get_text("view_steps", lang), expanded=True):
+                        for i, step in enumerate(result["steps"], 1):
+                            # Map status to icon
+                            status = step.get("status", "unknown")
+                            if status == "success":
+                                status_icon = "✅"
+                            elif status == "failed":
+                                status_icon = "❌"
+                            elif status in ["detected", "executing"]:
+                                status_icon = "🔍"
+                            else:
+                                status_icon = "ℹ️"
+
+                            st.write(f"{status_icon} **{get_text('step', lang)} {i}: {step['step']}**")
+
+                            # Display step details based on what's available
+                            if "result" in step:
+                                # Check if result is a dict (tool execution result)
+                                if isinstance(step["result"], dict):
+                                    st.json(step["result"])
+                                else:
+                                    st.caption(step["result"])
+                            elif "tool" in step:
+                                st.caption(f"🔧 Tool: **{step['tool']}**")
+                                if "arguments" in step:
+                                    # Show arguments inline with a toggle
+                                    with st.container():
+                                        st.caption("Arguments:")
+                                        st.json(step["arguments"])
+                            elif "error" in step:
+                                st.error(f"❌ Error: {step['error']}")
+
+                    # Show metadata
+                    with st.expander(get_text("task_details", lang)):
+                        metadata_display = result["metadata"].copy()
+                        if needs_more_info:
+                            metadata_display["conversation_status"] = "waiting_for_info"
+                        st.json(metadata_display)
+
+                    # Rerun to show updated conversation history
+                    st.rerun()
+                else:
+                    st.error(f"{get_text('task_failed', lang)}: {response.text}")
+                    # Clear conversation on error
+                    st.session_state.agent_conversation_history = []
+
+            except requests.exceptions.Timeout:
+                st.error(get_text("task_timeout", lang))
+                st.session_state.agent_conversation_history = []
+            except Exception as e:
+                st.error(f"{get_text('execution_failed', lang)}: {str(e)}")
+                st.session_state.agent_conversation_history = []
+
+    elif execute_button:
+        st.warning(get_text("enter_task", lang))
+
+    # Example tasks
+    st.divider()
+    st.subheader(get_text("example_tasks", lang))
+
+    examples = [
+        get_text("example_1", lang),
+        get_text("example_2", lang),
+        get_text("example_3", lang),
+        get_text("example_4", lang)
+    ]
+
+    cols = st.columns(2)
+    for i, example in enumerate(examples):
+        with cols[i % 2]:
+            if st.button(f"📋 {example}", key=f"example_{i}"):
+                st.session_state.selected_example = example
+                st.rerun()
+
+with tab3:
+    st.header(get_text("monitor_header", lang))
+    st.caption(get_text("monitor_caption", lang))
+
+    col1, col2, col3 = st.columns(3)
+
+    # Simulated metrics (should be fetched from Prometheus)
+    with col1:
+        st.metric(
+            label=get_text("agent_service", lang),
+            value=get_text("running", lang),
+            delta=get_text("normal", lang)
+        )
+
+    with col2:
+        st.metric(
+            label=get_text("llm_service", lang),
+            value=get_text("running", lang),
+            delta=get_text("normal", lang)
+        )
+
+    with col3:
+        st.metric(
+            label=get_text("mcp_service", lang),
+            value=get_text("running", lang),
+            delta=get_text("normal", lang)
+        )
+
+    st.divider()
+
+    # Monitoring links
+    st.subheader(get_text("monitor_tools", lang))
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(f"""
+        **{get_text("grafana_dashboard", lang)}**
+        - {get_text("grafana_url", lang)}: http://localhost:3000
+        - {get_text("grafana_account", lang)}: admin
+        - {get_text("grafana_password", lang)}: admin
+        - {get_text("grafana_features", lang)}
+        """)
+
+    with col2:
+        st.markdown(f"""
+        **{get_text("prometheus", lang)}**
+        - {get_text("grafana_url", lang)}: http://localhost:9090
+        - {get_text("prometheus_features", lang)}
+        """)
+
+    st.info(get_text("monitor_tip", lang))
+
+with tab4:
+    st.header("📚 Project Documentation")
+    st.caption("Complete documentation for the AI Platform")
+
+    # Documentation navigation
+    doc_sections = {
+        "📖 Quick Start": "README.md",
+        "🗄️ Database Schema": "DATABASE_SCHEMA.md",
+        "🔧 Troubleshooting Guide": "TROUBLESHOOTING_GUIDE.md",
+        "🧠 Context-Aware Agent": "CONTEXT_AWARE_AGENT_GUIDE.md",
+        "📧 SMTP Configuration": "SMTP_CONFIGURATION_GUIDE.md",
+        "✅ Test Results": "TEST_RESULTS.md",
+        "🚀 Deployment Guide": "DEPLOYMENT_GUIDE.md",
+        "📝 Changelog": "CHANGELOG.md",
+        "📊 Project Summary": "PROJECT_SUMMARY.md"
+    }
+
+    # Create columns for documentation cards
+    cols = st.columns(2)
+
+    for idx, (title, filename) in enumerate(doc_sections.items()):
+        with cols[idx % 2]:
+            with st.container():
+                st.subheader(title)
+
+                # Read documentation file
+                doc_path = f"/app/{filename}"  # In Docker container
+                try:
+                    if os.path.exists(doc_path):
+                        with open(doc_path, 'r', encoding='utf-8') as f:
+                            content = f.read()
+
+                        # Show preview
+                        preview = content[:200] + "..." if len(content) > 200 else content
+                        st.text(preview)
+
+                        # View button
+                        if st.button(f"📄 View {title}", key=f"view_{filename}"):
+                            st.session_state['current_doc'] = filename
+                            st.session_state['current_doc_title'] = title
+                    else:
+                        st.warning(f"Document not found: {filename}")
+                except Exception as e:
+                    st.error(f"Error loading {filename}: {str(e)}")
+
+    st.divider()
+
+    # Display selected document
+    if 'current_doc' in st.session_state:
+        doc_file = st.session_state['current_doc']
+        doc_title = st.session_state.get('current_doc_title', doc_file)
+
+        st.markdown(f"### 📖 {doc_title}")
+
+        # Back button
+        if st.button("⬅️ Back to Documentation List"):
+            del st.session_state['current_doc']
+            del st.session_state['current_doc_title']
+            st.rerun()
+
+        # Read and display full document
+        doc_path = f"/app/{doc_file}"
+        try:
+            if os.path.exists(doc_path):
+                with open(doc_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+
+                # Display markdown content
+                st.markdown(content)
+
+                # Download button
+                st.download_button(
+                    label=f"⬇️ Download {doc_file}",
+                    data=content,
+                    file_name=doc_file,
+                    mime="text/markdown"
+                )
+            else:
+                st.error(f"Document not found: {doc_file}")
+        except Exception as e:
+            st.error(f"Error reading document: {str(e)}")
+    else:
+        # Show quick links when no document is selected
+        st.markdown("""
+        ### Quick Links
+
+        - **Getting Started**: View README.md for quickstart guide
+        - **Troubleshooting**: TROUBLESHOOTING_GUIDE.md - Complete problem-solving guide
+        - **Context-Aware Agent**: CONTEXT_AWARE_AGENT_GUIDE.md - Natural language understanding
+        - **Email Setup**: SMTP_CONFIGURATION_GUIDE.md - Configure real email sending
+        - **Database**: See DATABASE_SCHEMA.md for schema details
+        - **Testing**: Check TEST_RESULTS.md for 100% test coverage
+        - **Deployment**: Follow DEPLOYMENT_GUIDE.md for production setup
+        - **Changes**: Review CHANGELOG.md for version history
+        - **Overview**: Read PROJECT_SUMMARY.md for executive summary
+
+        ### External Documentation
+
+        - [LiteLLM Docs](https://docs.litellm.ai/)
+        - [FastAPI Docs](https://fastapi.tiangolo.com/)
+        - [Streamlit Docs](https://docs.streamlit.io/)
+        - [Qdrant Docs](https://qdrant.tech/documentation/)
+        - [PostgreSQL Docs](https://www.postgresql.org/docs/)
+        """)
+
+        # Tools reference
+        st.divider()
+        st.subheader("🛠️ Available Tools (28 Total)")
+
+        tool_categories = {
+            "Data Analysis & Processing (3)": [
+                "analyze_data - Statistical analysis",
+                "process_csv - CSV file processing",
+                "generate_chart - Data visualization"
+            ],
+            "Search & Retrieval (3)": [
+                "semantic_search - AI-driven search",
+                "web_search - Web search integration",
+                "find_similar_documents - Document similarity"
+            ],
+            "Content Generation (3)": [
+                "summarize_document - Text summarization",
+                "translate_text - Multi-language translation",
+                "generate_report - Report generation"
+            ],
+            "Security & Compliance (3)": [
+                "check_permissions - Access control",
+                "audit_log - Audit logging",
+                "scan_sensitive_data - PII detection"
+            ],
+            "Business Process (3)": [
+                "create_task - Task management",
+                "send_notification - Notifications",
+                "schedule_meeting - Meeting scheduling"
+            ],
+            "System Integration (3)": [
+                "call_api - External API calls",
+                "execute_sql - SQL queries",
+                "run_script - Script execution"
+            ],
+            "Communication (2)": [
+                "send_email - Email sending",
+                "create_slack_message - Slack integration"
+            ],
+            "File Management (3)": [
+                "upload_file - File uploads",
+                "download_file - File downloads",
+                "list_files - File listing"
+            ],
+            "Calculation (2)": [
+                "calculate_metrics - Business KPIs",
+                "financial_calculator - ROI/NPV/IRR"
+            ]
+        }
+
+        for category, tools in tool_categories.items():
+            with st.expander(f"📂 {category}"):
+                for tool in tools:
+                    st.markdown(f"- `{tool}`")
+
+with tab5:
+    st.header(get_text("about_header", lang))
+
+    st.markdown(f"""
+    ### {get_text("about_title", lang)}
+
+    {get_text("about_intro", lang)}
+
+    #### {get_text("core_features", lang)}
+    - 🔄 {get_text("feature_hybrid", lang)}
+    - 🤖 {get_text("feature_agent", lang)}
+    - 📊 {get_text("feature_monitor", lang)}
+    - 🔒 {get_text("feature_security", lang)}
+
+    #### {get_text("tech_stack", lang)}
+    - {get_text("frontend", lang)}
+    - {get_text("backend", lang)}
+    - {get_text("llm_gateway", lang)}
+    - {get_text("local_inference", lang)}
+    - {get_text("database", lang)}
+    - {get_text("monitoring", lang)}
+
+    #### {get_text("supported_models", lang)}
+    - {get_text("models_openai", lang)}
+    - {get_text("models_anthropic", lang)}
+    - {get_text("models_local", lang)}
+    - {get_text("models_others", lang)}
+
+    #### {get_text("usage_tips", lang)}
+    1. {get_text("tip_1", lang)}
+    2. {get_text("tip_2", lang)}
+    3. {get_text("tip_3", lang)}
+
+    #### {get_text("version_info", lang)}
+    - {get_text("version", lang)}
+    - {get_text("update_date", lang)}
+    - {get_text("license", lang)}
+    """)
+
+    st.divider()
+
+    st.markdown(f"""
+    ### {get_text("tech_support", lang)}
+
+    {get_text("support_intro", lang)}
+    - {get_text("support_docs", lang)}
+    - {get_text("support_troubleshoot", lang)}
+    - {get_text("support_logs", lang)}
+    """)
