@@ -496,3 +496,12 @@ Date: YYYY-MM-DD
 # Result: [outcome]
 \`\`\`
 ```
+
+### Make script executable
+Date: 2025-10-21 18:34:59
+
+```bash
+chmod +x log_command.sh
+# Result: Script is now executable
+```
+
