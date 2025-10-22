@@ -74,6 +74,15 @@ TRANSLATIONS = {
         "example_3": "搜尋關於AI的文檔",
         "example_4": "分析電商網站的用戶行為數據",
 
+        # MCP Usage (Agent Tab)
+        "mcp_usage": "🔧 MCP工具使用詳情",
+        "tools_used": "使用的工具",
+        "resources_accessed": "訪問的資源",
+        "sampling_params": "採樣參數",
+        "system_prompt": "系統提示詞",
+        "arguments": "參數",
+        "result": "結果",
+
         # Monitor Tab
         "monitor_header": "📊 系統監控",
         "monitor_caption": "實時監控系統運行狀態",
@@ -192,6 +201,15 @@ TRANSLATIONS = {
         "example_2": "创建任务：完成季度报告",
         "example_3": "搜寻关于AI的文档",
         "example_4": "分析电商网站的用户行为数据",
+
+        # MCP Usage (Agent Tab)
+        "mcp_usage": "🔧 MCP工具使用详情",
+        "tools_used": "使用的工具",
+        "resources_accessed": "访问的资源",
+        "sampling_params": "采样参数",
+        "system_prompt": "系统提示词",
+        "arguments": "参数",
+        "result": "结果",
 
         # Monitor Tab
         "monitor_header": "📊 系统监控",
@@ -312,6 +330,15 @@ TRANSLATIONS = {
         "example_3": "search for AI documents",
         "example_4": "analyze e-commerce user behavior data",
 
+        # MCP Usage (Agent Tab)
+        "mcp_usage": "🔧 MCP Tool Usage Details",
+        "tools_used": "Tools Used",
+        "resources_accessed": "Resources Accessed",
+        "sampling_params": "Sampling Parameters",
+        "system_prompt": "System Prompt",
+        "arguments": "Arguments",
+        "result": "Result",
+
         # Monitor Tab
         "monitor_header": "📊 System Monitoring",
         "monitor_caption": "Real-time system status monitoring",
@@ -430,6 +457,15 @@ TRANSLATIONS = {
         "example_2": "create task: Hoàn thành báo cáo quý",
         "example_3": "search for AI documents",
         "example_4": "phân tích dữ liệu hành vi người dùng",
+
+        # MCP Usage (Agent Tab)
+        "mcp_usage": "🔧 Chi tiết Sử dụng Công cụ MCP",
+        "tools_used": "Công cụ Đã sử dụng",
+        "resources_accessed": "Tài nguyên Đã truy cập",
+        "sampling_params": "Tham số Lấy mẫu",
+        "system_prompt": "Lời nhắc Hệ thống",
+        "arguments": "Đối số",
+        "result": "Kết quả",
 
         # Monitor Tab
         "monitor_header": "📊 Giám sát Hệ thống",

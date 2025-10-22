@@ -276,6 +276,18 @@ async def execute_agent(request: AgentRequest):
     try:
         steps = []
 
+        # Track MCP usage
+        mcp_usage = {
+            "tools_used": [],  # List of tools that were called
+            "resources_accessed": [],  # List of resources accessed
+            "system_prompt": "",  # The system prompt used
+            "sampling_parameters": {
+                "temperature": request.temperature,
+                "top_p": request.top_p,
+                "top_k": request.top_k
+            }
+        }
+
         # Map model aliases to actual model names for LiteLLM
         # LiteLLM handles provider prefixes, we just pass the model name configured in litellm-config.yaml
         model_name_map = {
@@ -361,6 +373,13 @@ async def execute_agent(request: AgentRequest):
                 else:
                     result = f"✅ 工具執行成功！\n\n{json.dumps(tool_result, ensure_ascii=False, indent=2)}"
 
+                # Track fallback tool usage
+                mcp_usage["tools_used"].append({
+                    "name": tool_name,
+                    "arguments": tool_args,
+                    "result_summary": str(tool_result)[:200] + "..." if len(str(tool_result)) > 200 else str(tool_result)
+                })
+
                 return AgentResponse(
                     result=result,
                     steps=steps,
@@ -368,7 +387,8 @@ async def execute_agent(request: AgentRequest):
                         "agent_type": request.agent_type,
                         "model_used": request.model,
                         "tool_called": tool_name,
-                        "fallback_mode": True
+                        "fallback_mode": True,
+                        "mcp_usage": mcp_usage
                     }
                 )
 
@@ -387,7 +407,8 @@ async def execute_agent(request: AgentRequest):
                     metadata={
                         "agent_type": request.agent_type,
                         "error": str(tool_error),
-                        "fallback_mode": True
+                        "fallback_mode": True,
+                        "mcp_usage": mcp_usage
                     }
                 )
 
@@ -454,6 +475,9 @@ async def execute_agent(request: AgentRequest):
         }
 
         system_prompt = agent_prompts.get(request.agent_type, agent_prompts["general"])
+
+        # Store system prompt in MCP usage
+        mcp_usage["system_prompt"] = system_prompt
 
         # Check if document analysis is needed (documents are marked with special tags)
         has_document = "===== IMPORTANT: DOCUMENT ANALYSIS REQUIRED =====" in request.task or "---BEGIN DOCUMENT CONTENT---" in request.task
@@ -565,7 +589,7 @@ async def execute_agent(request: AgentRequest):
                         return AgentResponse(
                             result=f"LLM錯誤: {error_detail}",
                             steps=steps,
-                            metadata={"agent_type": request.agent_type, "error": error_detail}
+                            metadata={"agent_type": request.agent_type, "error": error_detail, "mcp_usage": mcp_usage}
                         )
 
                     llm_data = llm_response.json()
@@ -609,7 +633,8 @@ async def execute_agent(request: AgentRequest):
                                 "model_used": request.model,
                                 "iterations": iteration,
                                 "tokens_used": llm_data.get("usage", {}).get("total_tokens", 0),
-                                "conversation_active": needs_more_info
+                                "conversation_active": needs_more_info,
+                                "mcp_usage": mcp_usage
                             },
                             needs_more_info=needs_more_info
                         )
@@ -629,6 +654,26 @@ async def execute_agent(request: AgentRequest):
                         try:
                             # Call the MCP tool
                             tool_result = await call_mcp_tool(function_name, function_args)
+
+                            # Track tool usage
+                            tool_usage_record = {
+                                "name": function_name,
+                                "arguments": function_args,
+                                "result_summary": str(tool_result)[:200] + "..." if len(str(tool_result)) > 200 else str(tool_result)
+                            }
+                            mcp_usage["tools_used"].append(tool_usage_record)
+
+                            # Track resource access
+                            if function_name == "get_document" and "document_id" in function_args:
+                                mcp_usage["resources_accessed"].append({
+                                    "type": "document",
+                                    "id": function_args["document_id"]
+                                })
+                            elif function_name in ["search_knowledge_base", "semantic_search", "web_search"]:
+                                mcp_usage["resources_accessed"].append({
+                                    "type": "search",
+                                    "query": function_args.get("query", "N/A")
+                                })
 
                             steps.append({
                                 "step": f"tool_result_{iteration}",
@@ -673,14 +718,14 @@ async def execute_agent(request: AgentRequest):
                 return AgentResponse(
                     result=f"處理失敗: {str(e)}",
                     steps=steps,
-                    metadata={"agent_type": request.agent_type, "error": str(e)}
+                    metadata={"agent_type": request.agent_type, "error": str(e), "mcp_usage": mcp_usage}
                 )
 
         # Max iterations reached
         return AgentResponse(
             result="任務處理超過最大迭代次數",
             steps=steps,
-            metadata={"agent_type": request.agent_type, "max_iterations_reached": True}
+            metadata={"agent_type": request.agent_type, "max_iterations_reached": True, "mcp_usage": mcp_usage}
         )
 
     except Exception as e:

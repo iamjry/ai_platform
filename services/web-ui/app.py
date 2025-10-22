@@ -869,11 +869,58 @@ with tab2:
                             elif "error" in step:
                                 st.error(f"❌ Error: {step['error']}")
 
+                    # Show MCP Usage Information
+                    mcp_usage = result.get("metadata", {}).get("mcp_usage", {})
+                    if mcp_usage and any([mcp_usage.get("tools_used"), mcp_usage.get("resources_accessed")]):
+                        with st.expander(get_text("mcp_usage", lang), expanded=False):
+                            # Tools Used
+                            if mcp_usage.get("tools_used"):
+                                st.markdown(f"**{get_text('tools_used', lang)}** ({len(mcp_usage['tools_used'])})")
+                                for idx, tool in enumerate(mcp_usage["tools_used"], 1):
+                                    st.markdown(f"**{idx}. {tool['name']}**")
+                                    with st.container():
+                                        st.caption(f"📥 {get_text('arguments', lang)}:")
+                                        st.json(tool.get("arguments", {}))
+                                        if tool.get("result_summary"):
+                                            st.caption(f"📤 {get_text('result', lang)}: {tool['result_summary']}")
+                                st.divider()
+
+                            # Resources Accessed
+                            if mcp_usage.get("resources_accessed"):
+                                st.markdown(f"**{get_text('resources_accessed', lang)}** ({len(mcp_usage['resources_accessed'])})")
+                                for resource in mcp_usage["resources_accessed"]:
+                                    if resource["type"] == "document":
+                                        st.caption(f"📄 Document ID: {resource['id']}")
+                                    elif resource["type"] == "search":
+                                        st.caption(f"🔍 Search: {resource['query']}")
+                                st.divider()
+
+                            # Sampling Parameters
+                            if mcp_usage.get("sampling_parameters"):
+                                st.markdown(f"**{get_text('sampling_params', lang)}**")
+                                params = mcp_usage["sampling_parameters"]
+                                col1, col2, col3 = st.columns(3)
+                                with col1:
+                                    st.metric("Temperature", f"{params.get('temperature', 0.7):.2f}")
+                                with col2:
+                                    st.metric("Top-P", f"{params.get('top_p', 0.9):.2f}")
+                                with col3:
+                                    st.metric("Top-K", params.get('top_k', 40))
+                                st.divider()
+
+                            # System Prompt
+                            if mcp_usage.get("system_prompt"):
+                                with st.expander(get_text("system_prompt", lang)):
+                                    st.text(mcp_usage["system_prompt"])
+
                     # Show metadata
                     with st.expander(get_text("task_details", lang)):
                         metadata_display = result["metadata"].copy()
                         if needs_more_info:
                             metadata_display["conversation_status"] = "waiting_for_info"
+                        # Remove mcp_usage from metadata display (shown above)
+                        if "mcp_usage" in metadata_display:
+                            del metadata_display["mcp_usage"]
                         st.json(metadata_display)
 
                     # Rerun to show updated conversation history
