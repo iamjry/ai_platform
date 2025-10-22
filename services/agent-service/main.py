@@ -335,7 +335,8 @@ async def execute_agent(request: AgentRequest):
         # List of models that support function calling
         function_calling_models = [
             "gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo",
-            "claude-3-sonnet", "claude-3-5-sonnet", "claude-3-opus", "claude-3-haiku"
+            "claude-3-sonnet", "claude-3-5-sonnet", "claude-3-opus", "claude-3-haiku",
+            "qwen2.5", "qwen2.5-7b"  # Qwen models support function calling via LiteLLM
         ]
 
         # Check if this is a simple tool action that can be handled directly
