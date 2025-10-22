@@ -910,8 +910,15 @@ with tab2:
 
                             # System Prompt
                             if mcp_usage.get("system_prompt"):
-                                with st.expander(get_text("system_prompt", lang)):
-                                    st.text(mcp_usage["system_prompt"])
+                                st.markdown(f"**{get_text('system_prompt', lang)}**")
+                                with st.container():
+                                    st.text_area(
+                                        label="",
+                                        value=mcp_usage["system_prompt"],
+                                        height=150,
+                                        disabled=True,
+                                        label_visibility="collapsed"
+                                    )
 
                     # Show metadata
                     with st.expander(get_text("task_details", lang)):
