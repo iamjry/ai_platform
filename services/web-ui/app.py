@@ -3,6 +3,7 @@ import requests
 import os
 import time
 import base64
+import random
 from io import BytesIO
 from PyPDF2 import PdfReader
 from i18n import LANGUAGES, get_text
@@ -736,6 +737,10 @@ with tab2:
     if "agent_messages" not in st.session_state:
         st.session_state.agent_messages = []
 
+    # Initialize task input value
+    if "task_input_value" not in st.session_state:
+        st.session_state.task_input_value = ""
+
     # Show conversation history
     if st.session_state.agent_messages:
         st.subheader("💬 " + ("對話歷史" if lang == "zh-TW" else "Conversation History"))
@@ -750,11 +755,16 @@ with tab2:
     col1, col2 = st.columns([3, 1])
 
     with col1:
+        # Use task_input_value to control the text_area
+        if st.session_state.selected_example:
+            st.session_state.task_input_value = st.session_state.selected_example
+            st.session_state.selected_example = ""
+
         task = st.text_area(
             get_text("describe_task", lang),
             height=150,
             placeholder=get_text("task_placeholder", lang),
-            value=st.session_state.selected_example,
+            value=st.session_state.task_input_value,
             key="task_input"
         )
 
@@ -775,8 +785,9 @@ with tab2:
                 st.rerun()
 
     if execute_button and task:
-        # Clear the selected example after execution starts
+        # Clear the task input after execution starts
         st.session_state.selected_example = ""
+        st.session_state.task_input_value = ""
 
         with st.spinner(get_text("executing", lang)):
             try:
@@ -950,7 +961,62 @@ with tab2:
 
     # Example tasks
     st.divider()
-    st.subheader(get_text("example_tasks", lang))
+
+    col_header, col_button = st.columns([3, 1])
+    with col_header:
+        st.subheader(get_text("example_tasks", lang))
+    with col_button:
+        if st.button("🎲 " + get_text("generate_example", lang), use_container_width=True):
+            # Define a pool of example tasks for different languages
+            example_pool = {
+                "zh-TW": [
+                    "發送郵件給 team@example.com，主旨：每週會議，內容：提醒大家本週五下午3點開會",
+                    "分析上個月的銷售數據並生成報告",
+                    "搜索關於人工智能最新趨勢的文章",
+                    "創建一個任務：完成Q1財務報表，截止日期：下週五",
+                    "總結這份文件的主要內容",
+                    "計算ROI：初始投資10萬，年收益3萬，期限5年",
+                    "翻譯這段文字到英文：我們的產品在市場上表現優異",
+                    "使用語義搜索找到與'機器學習'相關的文檔"
+                ],
+                "zh-CN": [
+                    "发送邮件给 team@example.com，主题：每周会议，内容：提醒大家本周五下午3点开会",
+                    "分析上个月的销售数据并生成报告",
+                    "搜索关于人工智能最新趋势的文章",
+                    "创建一个任务：完成Q1财务报表，截止日期：下周五",
+                    "总结这份文件的主要内容",
+                    "计算ROI：初始投资10万，年收益3万，期限5年",
+                    "翻译这段文字到英文：我们的产品在市场上表现优异",
+                    "使用语义搜索找到与'机器学习'相关的文档"
+                ],
+                "en": [
+                    "Send email to team@example.com, subject: Weekly Meeting, body: Reminder for Friday 3pm meeting",
+                    "Analyze last month's sales data and generate a report",
+                    "Search for articles about the latest AI trends",
+                    "Create a task: Complete Q1 financial report, deadline: next Friday",
+                    "Summarize the main points of this document",
+                    "Calculate ROI: Initial investment $100k, annual return $30k, period 5 years",
+                    "Translate this text to Chinese: Our product performs exceptionally well in the market",
+                    "Use semantic search to find documents related to 'machine learning'"
+                ],
+                "vi": [
+                    "Gửi email đến team@example.com, chủ đề: Cuộc họp hàng tuần, nội dung: Nhắc nhở cuộc họp Thứ Sáu 3 giờ chiều",
+                    "Phân tích dữ liệu bán hàng tháng trước và tạo báo cáo",
+                    "Tìm kiếm bài viết về xu hướng AI mới nhất",
+                    "Tạo nhiệm vụ: Hoàn thành báo cáo tài chính Q1, hạn chót: Thứ Sáu tuần sau",
+                    "Tóm tắt các điểm chính của tài liệu này",
+                    "Tính ROI: Đầu tư ban đầu $100k, lợi nhuận hàng năm $30k, thời hạn 5 năm",
+                    "Dịch văn bản này sang tiếng Trung: Sản phẩm của chúng tôi hoạt động rất tốt trên thị trường",
+                    "Sử dụng tìm kiếm ngữ nghĩa để tìm tài liệu liên quan đến 'machine learning'"
+                ]
+            }
+
+            # Get pool for current language
+            pool = example_pool.get(lang, example_pool["en"])
+            # Pick a random example
+            random_example = random.choice(pool)
+            st.session_state.selected_example = random_example
+            st.rerun()
 
     examples = [
         get_text("example_1", lang),
