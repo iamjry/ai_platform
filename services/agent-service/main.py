@@ -261,12 +261,25 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
             "assignee": "system"
         })
 
-    # Search patterns
-    if any(keyword in task_lower for keyword in ["搜索", "搜尋", "search", "查找", "find"]):
-        return ("search_knowledge_base", {
-            "query": task,
-            "limit": 5
-        })
+    # Search patterns - extract the actual search term
+    search_keywords = ["搜索", "搜尋", "search", "查找", "find", "搜"]
+    for keyword in search_keywords:
+        if keyword in task_lower:
+            # Extract search query by removing the search keyword and common connecting words
+            query = task
+            # Remove search keywords with common patterns
+            query = re.sub(r'(搜索|搜尋|search\s+for|查找|find|搜)\s*(關於|关于|about|for)?\s*', '', query, flags=re.IGNORECASE)
+            # Remove common Chinese article/connecting words at the end
+            query = re.sub(r'[的之]?(文檔|文档|檔案|档案|資料|资料|內容|内容|信息|資訊|资讯)$', '', query)
+            # Clean up
+            query = query.strip().lstrip('的之').rstrip('的之').strip()
+            # If query is empty or too short, use original task
+            if len(query) < 2:
+                query = task
+            return ("search_knowledge_base", {
+                "query": query,
+                "limit": 5
+            })
 
     return None
 
@@ -333,10 +346,11 @@ async def execute_agent(request: AgentRequest):
             functions = []
 
         # List of models that support function calling
+        # Note: Ollama models (qwen2.5) don't support OpenAI-style function calling
+        # They use the fallback pattern matching approach in detect_tool_intent()
         function_calling_models = [
             "gpt-3.5-turbo", "gpt-4", "gpt-4o", "gpt-4o-mini", "gpt-4-turbo",
-            "claude-3-sonnet", "claude-3-5-sonnet", "claude-3-opus", "claude-3-haiku",
-            "qwen2.5", "qwen2.5-7b"  # Qwen models support function calling via LiteLLM
+            "claude-3-sonnet", "claude-3-5-sonnet", "claude-3-opus", "claude-3-haiku"
         ]
 
         # Check if this is a simple tool action that can be handled directly
