@@ -364,9 +364,10 @@ with st.sidebar:
             st.info(get_text("no_chat_history", lang))
 
 # Main Content
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     get_text("tab_chat", lang),
     get_text("tab_agent", lang),
+    get_text("tab_agents_catalog", lang),
     get_text("tab_monitor", lang),
     "📚 Documentation",
     get_text("tab_about", lang)
@@ -966,6 +967,200 @@ with tab2:
                 st.rerun()
 
 with tab3:
+    st.header(get_text("agents_catalog_header", lang))
+    st.caption(get_text("agents_catalog_caption", lang))
+
+    # Agent Types Section
+    st.subheader(get_text("agent_types", lang))
+
+    agent_configs = {
+        "general": {
+            "name": get_text("agent_general", lang),
+            "icon": "🤖",
+            "description": get_text("agent_general_desc", lang),
+            "use_cases": get_text("agent_general_uses", lang),
+            "prompt": """你是一個企業AI助手，可以直接回答問題或使用各種工具來幫助用戶完成任務。
+
+重要指南：
+
+📄 **文件分析模式**：
+- 如果用戶上傳了文件（PDF、文本等）並詢問內容，直接分析文件並回答問題
+- 不需要使用工具，直接閱讀提供的文件內容並進行分析
+- 示例：用戶上傳PDF並問"描述這份文件" → 直接分析文件內容並詳細描述
+
+🛠️ **工具使用模式**：
+1. 當用戶要求執行某個操作時（如發送郵件、創建任務、搜索等），請調用相應的工具
+2. 在調用工具之前，檢查是否有所有必需的參數
+3. 如果缺少必需參數（如email地址、subject、body等），不要猜測或使用默認值
+4. 如果信息不足，請禮貌地詢問用戶提供缺少的信息
+5. 一次只詢問缺少的信息，不要問不必要的問題
+6. 收集到所有必需信息後，立即執行操作
+
+示例：
+- 用戶說"send email"但沒有提供收件人 → 詢問收件人email地址
+- 用戶說"send email to john@example.com"但沒有主旨和內容 → 詢問郵件主旨和內容
+- 用戶提供了所有信息 → 直接執行發送郵件"""
+        },
+        "research": {
+            "name": get_text("agent_research", lang),
+            "icon": "🔬",
+            "description": get_text("agent_research_desc", lang),
+            "use_cases": get_text("agent_research_uses", lang),
+            "prompt": """你是一個專業的研究助手，擅長信息收集、分析和整理。
+
+你的專長：
+1. 使用搜索工具（search_knowledge_base, web_search, semantic_search）深入研究主題
+2. 找到相關文檔並提取關鍵信息
+3. 整合多個來源的信息，提供全面的研究報告
+4. 驗證信息的準確性和相關性
+5. 提供引用和來源
+
+工作方式：
+- 收到研究任務時，先規劃搜索策略
+- 使用多個搜索工具交叉驗證信息
+- 整理發現的信息，以結構化方式呈現
+- 必要時使用 summarize_document 工具總結長文檔
+- 提供清晰的研究結論和建議
+
+重點：深度、準確性、來源可靠性"""
+        },
+        "analysis": {
+            "name": get_text("agent_analysis", lang),
+            "icon": "📊",
+            "description": get_text("agent_analysis_desc", lang),
+            "use_cases": get_text("agent_analysis_uses", lang),
+            "prompt": """你是一個數據分析專家，專注於數據處理、分析和可視化。
+
+你的專長：
+1. 使用 analyze_data 工具進行統計分析
+2. 使用 process_csv 處理和清理數據
+3. 使用 generate_chart 創建數據可視化
+4. 使用 calculate_metrics 計算業務指標
+5. 使用 financial_calculator 進行財務分析
+
+工作流程：
+- 理解數據分析需求
+- 檢查數據質量和完整性
+- 選擇適當的分析方法
+- 生成清晰的圖表和報表
+- 提供數據驅動的見解和建議
+
+重點：數據準確性、分析深度、可視化清晰度、actionable insights"""
+        }
+    }
+
+    cols = st.columns(3)
+    for idx, (agent_id, config) in enumerate(agent_configs.items()):
+        with cols[idx]:
+            st.markdown(f"### {config['icon']} {config['name']}")
+            st.caption(config['description'])
+            st.markdown(f"**{get_text('use_cases', lang)}:**")
+            st.markdown(config['use_cases'])
+
+            with st.expander(get_text("view_system_prompt", lang)):
+                st.text_area(
+                    label="",
+                    value=config['prompt'],
+                    height=200,
+                    disabled=True,
+                    label_visibility="collapsed",
+                    key=f"prompt_{agent_id}"
+                )
+
+    st.divider()
+
+    # Default Sampling Parameters
+    st.subheader(get_text("default_sampling", lang))
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric("Temperature", "0.7", help=get_text("default_temp_help", lang))
+    with col2:
+        st.metric("Top-P", "0.9", help=get_text("default_topp_help", lang))
+    with col3:
+        st.metric("Top-K", "40", help=get_text("default_topk_help", lang))
+
+    st.info(get_text("sampling_info", lang))
+
+    st.divider()
+
+    # MCP Tools Section
+    st.subheader(get_text("available_tools", lang))
+
+    # Fetch tools from MCP server
+    try:
+        mcp_url = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
+        response = requests.get(f"{mcp_url}/tools/list", timeout=5)
+        if response.ok:
+            tools_data = response.json()
+            tools = tools_data.get("tools", [])
+
+            st.success(f"{get_text('tools_loaded', lang)}: {len(tools)} {get_text('tools', lang)}")
+
+            # Group tools by category
+            categorized_tools = {}
+            for tool in tools:
+                category = tool.get("category", "other")
+                if category not in categorized_tools:
+                    categorized_tools[category] = []
+                categorized_tools[category].append(tool)
+
+            # Display tools by category
+            for category, category_tools in sorted(categorized_tools.items()):
+                with st.expander(f"📂 {category.title()} ({len(category_tools)})"):
+                    for tool in category_tools:
+                        st.markdown(f"**{tool['name']}**")
+                        st.caption(f"📝 {tool['description']}")
+                        if tool.get("parameters"):
+                            params_str = ", ".join([f"`{k}`: {v}" for k, v in tool["parameters"].items()])
+                            st.caption(f"⚙️ {get_text('parameters', lang)}: {params_str}")
+                        st.markdown("---")
+        else:
+            st.warning(get_text("tools_load_failed", lang))
+            st.caption(f"Status: {response.status_code}")
+    except Exception as e:
+        st.error(f"{get_text('tools_load_error', lang)}: {str(e)}")
+
+    st.divider()
+
+    # Resources Section
+    st.subheader(get_text("available_resources", lang))
+
+    resource_types = {
+        get_text("resource_documents", lang): {
+            "icon": "📄",
+            "description": get_text("resource_documents_desc", lang),
+            "access": get_text("resource_documents_access", lang)
+        },
+        get_text("resource_knowledge_base", lang): {
+            "icon": "📚",
+            "description": get_text("resource_knowledge_desc", lang),
+            "access": get_text("resource_knowledge_access", lang)
+        },
+        get_text("resource_web", lang): {
+            "icon": "🌐",
+            "description": get_text("resource_web_desc", lang),
+            "access": get_text("resource_web_access", lang)
+        },
+        get_text("resource_databases", lang): {
+            "icon": "🗄️",
+            "description": get_text("resource_databases_desc", lang),
+            "access": get_text("resource_databases_access", lang)
+        }
+    }
+
+    for resource_name, resource_info in resource_types.items():
+        with st.container():
+            col_icon, col_content = st.columns([1, 9])
+            with col_icon:
+                st.markdown(f"<div style='font-size: 2rem; text-align: center;'>{resource_info['icon']}</div>", unsafe_allow_html=True)
+            with col_content:
+                st.markdown(f"**{resource_name}**")
+                st.caption(resource_info['description'])
+                st.caption(f"🔑 {get_text('access_via', lang)}: {resource_info['access']}")
+            st.markdown("---")
+
+with tab4:
     st.header(get_text("monitor_header", lang))
     st.caption(get_text("monitor_caption", lang))
 
