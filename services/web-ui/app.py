@@ -197,25 +197,29 @@ with st.sidebar:
         st.rerun()
 
     # Model options with display names
-    model_options = {
-        "qwen2.5:7b (local - better for PDFs)": "qwen2.5-7b",
-        "qwen2.5:0.5b (local - fast chat)": "qwen2.5",
-        "gpt-4o (OpenAI)": "gpt-4o",
-        "gpt-4o-mini (OpenAI)": "gpt-4o-mini",
-        "gpt-4 (OpenAI)": "gpt-4",
-        "gpt-3.5-turbo (OpenAI)": "gpt-3.5-turbo",
-        "claude-3-5-sonnet (Anthropic)": "claude-3-5-sonnet",
-        "claude-3-opus (Anthropic)": "claude-3-opus",
-        "claude-3-sonnet (Anthropic)": "claude-3-sonnet",
-        "claude-3-haiku (Anthropic)": "claude-3-haiku",
-        "gemini-1.5-pro (Google)": "gemini-1.5-pro",
-        "gemini-1.5-flash (Google)": "gemini-1.5-flash",
-        "Llama 3.1 TaideLX 8B-32K (Taiwan Gov)": "llama31-taidelx-8b-32k",
-        "Llama 3.3 FFM 70B-32K (Taiwan Gov)": "llama33-ffm-70b-32k",
-        "Llama 3.1 FoxBrain 70B-32K (Taiwan Gov)": "llama31-foxbrain-70b-32k",
-        "Llama 3 Taiwan 70B-8K (Taiwan Gov)": "llama3-taiwan-70b-8k",
-        "Llama 3.2 FFM 11B Vision-32K (Taiwan Gov)": "llama32-ffm-11b-v-32k"
-    }
+    # Load model options from litellm config
+    import yaml
+
+    def load_model_options():
+        try:
+            with open("/app/config/litellm-config.yaml", 'r', encoding='utf-8') as f:
+                config = yaml.safe_load(f)
+                model_options = {}
+                if "model_list" in config:
+                    for model in config["model_list"]:
+                        model_name = model.get("model_name", "")
+                        display_name = model.get("display_name", model_name)
+                        if model_name and display_name:
+                            model_options[display_name] = model_name
+                return model_options
+        except Exception as e:
+            # Fallback to default if config can't be loaded
+            return {
+                "qwen2.5:7b (local - better for PDFs)": "qwen2.5-7b",
+                "gpt-4o (OpenAI)": "gpt-4o"
+            }
+
+    model_options = load_model_options()
 
     model_display = st.selectbox(
         get_text("select_model", lang),
@@ -1292,6 +1296,7 @@ with tab4:
                 col1, col2 = st.columns(2)
                 with col1:
                     new_model_name = st.text_input(get_text("model_name", lang), placeholder="gpt-4")
+                    new_display_name = st.text_input(get_text("display_name", lang), placeholder="GPT-4 (OpenAI)")
                     new_model_provider = st.selectbox(
                         get_text("provider_type", lang),
                         ["openai", "anthropic", "ollama", "gemini", "custom"]
@@ -1321,6 +1326,10 @@ with tab4:
                         }
                     }
 
+                    # Add display_name if provided
+                    if new_display_name:
+                        new_model["display_name"] = new_display_name
+
                     if new_api_base:
                         new_model["litellm_params"]["api_base"] = new_api_base
                     if new_api_key:
@@ -1346,6 +1355,7 @@ with tab4:
         if "model_list" in litellm_config:
             for idx, model in enumerate(litellm_config["model_list"]):
                 model_name = model.get("model_name", "Unknown")
+                display_name = model.get("display_name", model_name)
                 litellm_params = model.get("litellm_params", {})
                 model_id = litellm_params.get("model", "")
                 api_base = litellm_params.get("api_base", "")
@@ -1367,7 +1377,7 @@ with tab4:
                 # Check if this model is being edited
                 is_editing = st.session_state.editing_model == idx
 
-                with st.expander(f"**{model_name}** - {provider}", expanded=is_editing):
+                with st.expander(f"**{display_name}** ({model_name}) - {provider}", expanded=is_editing):
                     if is_editing:
                         # Edit mode
                         with st.form(f"edit_model_form_{idx}"):
@@ -1377,6 +1387,11 @@ with tab4:
                                     get_text("model_name", lang),
                                     value=model_name,
                                     key=f"edit_name_{idx}"
+                                )
+                                edit_display_name = st.text_input(
+                                    get_text("display_name", lang),
+                                    value=display_name,
+                                    key=f"edit_display_{idx}"
                                 )
                                 edit_model_id = st.text_input(
                                     get_text("model_id", lang),
@@ -1410,6 +1425,8 @@ with tab4:
                             if save_clicked:
                                 # Update model
                                 litellm_config["model_list"][idx]["model_name"] = edit_model_name
+                                if edit_display_name:
+                                    litellm_config["model_list"][idx]["display_name"] = edit_display_name
                                 litellm_config["model_list"][idx]["litellm_params"]["model"] = edit_model_id
                                 if edit_api_base:
                                     litellm_config["model_list"][idx]["litellm_params"]["api_base"] = edit_api_base
