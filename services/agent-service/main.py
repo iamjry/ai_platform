@@ -316,7 +316,13 @@ async def execute_agent(request: AgentRequest):
             "gemini-1.5-pro": "gemini-1.5-pro",
             "gemini-1.5-flash": "gemini-1.5-flash",
             "qwen2.5": "qwen2.5",
-            "qwen2.5-7b": "qwen2.5-7b"
+            "qwen2.5-7b": "qwen2.5-7b",
+            # Taiwan Government LLM API models
+            "llama31-taidelx-8b-32k": "llama31-taidelx-8b-32k",
+            "llama33-ffm-70b-32k": "llama33-ffm-70b-32k",
+            "llama31-foxbrain-70b-32k": "llama31-foxbrain-70b-32k",
+            "llama3-taiwan-70b-8k": "llama3-taiwan-70b-8k",
+            "llama32-ffm-11b-v-32k": "llama32-ffm-11b-v-32k"
         }
 
         # Get actual model name for API calls

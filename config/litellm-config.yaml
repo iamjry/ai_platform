@@ -63,6 +63,37 @@ model_list:
       model: ollama/qwen2.5:7b
       api_base: http://ollama:11434
 
+  # Taiwan Government LLM API (AFSPOD)
+  - model_name: llama31-taidelx-8b-32k
+    litellm_params:
+      model: openai/llama31-taidelx-8b-32k
+      api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat
+      api_key: "1191d4e5-f737-4f7c-b3b5-e80eeac656b5"
+
+  - model_name: llama33-ffm-70b-32k
+    litellm_params:
+      model: openai/llama33-ffm-70b-32k
+      api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat
+      api_key: "1191d4e5-f737-4f7c-b3b5-e80eeac656b5"
+
+  - model_name: llama31-foxbrain-70b-32k
+    litellm_params:
+      model: openai/llama31-foxbrain-70b-32k
+      api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat
+      api_key: "1191d4e5-f737-4f7c-b3b5-e80eeac656b5"
+
+  - model_name: llama3-taiwan-70b-8k
+    litellm_params:
+      model: openai/llama3-taiwan-70b-8k
+      api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat
+      api_key: "1191d4e5-f737-4f7c-b3b5-e80eeac656b5"
+
+  - model_name: llama32-ffm-11b-v-32k
+    litellm_params:
+      model: openai/llama32-ffm-11b-v-32k
+      api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat
+      api_key: "1191d4e5-f737-4f7c-b3b5-e80eeac656b5"
+
 litellm_settings:
   drop_params: true
   set_verbose: true

@@ -36,6 +36,7 @@ TRANSLATIONS = {
         "tab_chat": "💬 對話",
         "tab_agent": "🤖 Agent任務",
         "tab_agents_catalog": "👥 Agents目錄",
+        "tab_models_config": "⚙️ 模型配置",
         "tab_monitor": "📊 監控",
         "tab_about": "ℹ️ 關於",
 
@@ -125,6 +126,22 @@ TRANSLATIONS = {
         "resource_databases_desc": "查詢企業資料庫和數據源",
         "resource_databases_access": "execute_sql, analyze_data",
         "access_via": "訪問方式",
+
+        # Model Configuration Tab
+        "models_config_header": "⚙️ 模型配置",
+        "models_config_caption": "查看和管理所有可用的AI模型",
+        "available_models": "可用模型",
+        "local_models": "本地模型",
+        "openai_models": "OpenAI 模型",
+        "anthropic_models": "Anthropic 模型",
+        "google_models": "Google 模型",
+        "taiwan_gov_models": "台灣政府模型 (AFSPOD)",
+        "models": "模型",
+        "ready": "就緒",
+        "api_key_required": "需要API金鑰",
+        "api_configuration": "API配置",
+        "view_api_config": "查看API配置詳情",
+        "api_config_info": "以下是已配置的API端點和模型信息。請在.env文件中設置相應的API金鑰。",
 
         # Monitor Tab
         "monitor_header": "📊 系統監控",
@@ -297,6 +314,22 @@ TRANSLATIONS = {
         "resource_databases_access": "execute_sql, analyze_data",
         "access_via": "访问方式",
 
+        # Model Configuration Tab
+        "models_config_header": "⚙️ 模型配置",
+        "models_config_caption": "查看和管理所有可用的AI模型",
+        "available_models": "可用模型",
+        "local_models": "本地模型",
+        "openai_models": "OpenAI 模型",
+        "anthropic_models": "Anthropic 模型",
+        "google_models": "Google 模型",
+        "taiwan_gov_models": "台湾政府模型 (AFSPOD)",
+        "models": "模型",
+        "ready": "就绪",
+        "api_key_required": "需要API密钥",
+        "api_configuration": "API配置",
+        "view_api_config": "查看API配置详情",
+        "api_config_info": "以下是已配置的API端点和模型信息。请在.env文件中设置相应的API密钥。",
+
         # Monitor Tab
         "monitor_header": "📊 系统监控",
         "monitor_caption": "实时监控系统运行状态",
@@ -468,6 +501,22 @@ TRANSLATIONS = {
         "resource_databases_access": "execute_sql, analyze_data",
         "access_via": "Access via",
 
+        # Model Configuration Tab
+        "models_config_header": "⚙️ Model Configuration",
+        "models_config_caption": "View and manage all available AI models",
+        "available_models": "Available Models",
+        "local_models": "Local Models",
+        "openai_models": "OpenAI Models",
+        "anthropic_models": "Anthropic Models",
+        "google_models": "Google Models",
+        "taiwan_gov_models": "Taiwan Government Models (AFSPOD)",
+        "models": "models",
+        "ready": "Ready",
+        "api_key_required": "API Key Required",
+        "api_configuration": "API Configuration",
+        "view_api_config": "View API Configuration Details",
+        "api_config_info": "Below are the configured API endpoints and model information. Please set the corresponding API keys in the .env file.",
+
         # Monitor Tab
         "monitor_header": "📊 System Monitoring",
         "monitor_caption": "Real-time system status monitoring",
@@ -638,6 +687,22 @@ TRANSLATIONS = {
         "resource_databases_desc": "Truy vấn cơ sở dữ liệu và nguồn dữ liệu doanh nghiệp",
         "resource_databases_access": "execute_sql, analyze_data",
         "access_via": "Truy cập qua",
+
+        # Model Configuration Tab
+        "models_config_header": "⚙️ Cấu hình Model",
+        "models_config_caption": "Xem và quản lý tất cả các model AI có sẵn",
+        "available_models": "Các Model Có Sẵn",
+        "local_models": "Model Cục bộ",
+        "openai_models": "Model OpenAI",
+        "anthropic_models": "Model Anthropic",
+        "google_models": "Model Google",
+        "taiwan_gov_models": "Model Chính phủ Đài Loan (AFSPOD)",
+        "models": "models",
+        "ready": "Sẵn sàng",
+        "api_key_required": "Cần API Key",
+        "api_configuration": "Cấu hình API",
+        "view_api_config": "Xem Chi tiết Cấu hình API",
+        "api_config_info": "Dưới đây là các endpoint API và thông tin model đã cấu hình. Vui lòng thiết lập các API key tương ứng trong file .env.",
 
         # Monitor Tab
         "monitor_header": "📊 Giám sát Hệ thống",

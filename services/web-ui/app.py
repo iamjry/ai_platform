@@ -209,7 +209,12 @@ with st.sidebar:
         "claude-3-sonnet (Anthropic)": "claude-3-sonnet",
         "claude-3-haiku (Anthropic)": "claude-3-haiku",
         "gemini-1.5-pro (Google)": "gemini-1.5-pro",
-        "gemini-1.5-flash (Google)": "gemini-1.5-flash"
+        "gemini-1.5-flash (Google)": "gemini-1.5-flash",
+        "Llama 3.1 TaideLX 8B-32K (Taiwan Gov)": "llama31-taidelx-8b-32k",
+        "Llama 3.3 FFM 70B-32K (Taiwan Gov)": "llama33-ffm-70b-32k",
+        "Llama 3.1 FoxBrain 70B-32K (Taiwan Gov)": "llama31-foxbrain-70b-32k",
+        "Llama 3 Taiwan 70B-8K (Taiwan Gov)": "llama3-taiwan-70b-8k",
+        "Llama 3.2 FFM 11B Vision-32K (Taiwan Gov)": "llama32-ffm-11b-v-32k"
     }
 
     model_display = st.selectbox(
@@ -240,6 +245,8 @@ with st.sidebar:
             st.info(f"**Provider:** Anthropic\n\n**Status:** ⚠️ API key required")
         elif model_choice.startswith("gemini"):
             st.info(f"**Provider:** Google\n\n**Status:** ⚠️ API key required")
+        elif model_choice.startswith("llama"):
+            st.info(f"**Provider:** Taiwan Gov (AFSPOD)\n\n**Status:** ✅ API key configured")
 
     with col_info2:
         # Context window info
@@ -365,10 +372,11 @@ with st.sidebar:
             st.info(get_text("no_chat_history", lang))
 
 # Main Content
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     get_text("tab_chat", lang),
     get_text("tab_agent", lang),
     get_text("tab_agents_catalog", lang),
+    get_text("tab_models_config", lang),
     get_text("tab_monitor", lang),
     "📚 Documentation",
     get_text("tab_about", lang)
@@ -1227,6 +1235,105 @@ with tab3:
             st.markdown("---")
 
 with tab4:
+    st.header(get_text("models_config_header", lang))
+    st.caption(get_text("models_config_caption", lang))
+
+    # Model Categories
+    st.subheader(get_text("available_models", lang))
+
+    # Group models by provider
+    model_categories = {
+        get_text("local_models", lang): [
+            {"name": "qwen2.5:7b", "display": "Qwen 2.5 7B", "context": "32K", "status": "✅", "provider": "Ollama"},
+            {"name": "qwen2.5:0.5b", "display": "Qwen 2.5 0.5B", "context": "32K", "status": "✅", "provider": "Ollama"}
+        ],
+        get_text("openai_models", lang): [
+            {"name": "gpt-4o", "display": "GPT-4o", "context": "128K", "status": "⚠️", "provider": "OpenAI"},
+            {"name": "gpt-4o-mini", "display": "GPT-4o Mini", "context": "128K", "status": "⚠️", "provider": "OpenAI"},
+            {"name": "gpt-4", "display": "GPT-4", "context": "8K", "status": "⚠️", "provider": "OpenAI"},
+            {"name": "gpt-3.5-turbo", "display": "GPT-3.5 Turbo", "context": "16K", "status": "⚠️", "provider": "OpenAI"}
+        ],
+        get_text("anthropic_models", lang): [
+            {"name": "claude-3-5-sonnet", "display": "Claude 3.5 Sonnet", "context": "200K", "status": "⚠️", "provider": "Anthropic"},
+            {"name": "claude-3-opus", "display": "Claude 3 Opus", "context": "200K", "status": "⚠️", "provider": "Anthropic"},
+            {"name": "claude-3-sonnet", "display": "Claude 3 Sonnet", "context": "200K", "status": "⚠️", "provider": "Anthropic"},
+            {"name": "claude-3-haiku", "display": "Claude 3 Haiku", "context": "200K", "status": "⚠️", "provider": "Anthropic"}
+        ],
+        get_text("google_models", lang): [
+            {"name": "gemini-1.5-pro", "display": "Gemini 1.5 Pro", "context": "2M", "status": "⚠️", "provider": "Google"},
+            {"name": "gemini-1.5-flash", "display": "Gemini 1.5 Flash", "context": "1M", "status": "⚠️", "provider": "Google"}
+        ],
+        get_text("taiwan_gov_models", lang): [
+            {"name": "llama31-taidelx-8b-32k", "display": "Llama 3.1 TaideLX 8B", "context": "32K", "status": "✅", "provider": "Taiwan Gov"},
+            {"name": "llama33-ffm-70b-32k", "display": "Llama 3.3 FFM 70B", "context": "32K", "status": "✅", "provider": "Taiwan Gov"},
+            {"name": "llama31-foxbrain-70b-32k", "display": "Llama 3.1 FoxBrain 70B", "context": "32K", "status": "✅", "provider": "Taiwan Gov"},
+            {"name": "llama3-taiwan-70b-8k", "display": "Llama 3 Taiwan 70B", "context": "8K", "status": "✅", "provider": "Taiwan Gov"},
+            {"name": "llama32-ffm-11b-v-32k", "display": "Llama 3.2 FFM 11B Vision", "context": "32K", "status": "✅", "provider": "Taiwan Gov"}
+        ]
+    }
+
+    # Display models by category
+    for category, models in model_categories.items():
+        with st.expander(f"**{category}** ({len(models)} {get_text('models', lang)})", expanded=True):
+            for model in models:
+                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+                with col1:
+                    st.markdown(f"**{model['display']}**")
+                    st.caption(f"`{model['name']}`")
+                with col2:
+                    st.caption(f"🏢 {model['provider']}")
+                with col3:
+                    st.caption(f"📏 {model['context']}")
+                with col4:
+                    if model['status'] == "✅":
+                        st.success(get_text("ready", lang))
+                    else:
+                        st.warning(get_text("api_key_required", lang))
+                st.markdown("---")
+
+    # API Configuration Section
+    st.divider()
+    st.subheader(get_text("api_configuration", lang))
+
+    with st.expander(get_text("view_api_config", lang)):
+        st.info(get_text("api_config_info", lang))
+
+        api_configs = {
+            "OpenAI API": {
+                "endpoint": "https://api.openai.com/v1",
+                "models": ["gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-3.5-turbo"],
+                "status": "⚠️ API key required in .env"
+            },
+            "Anthropic API": {
+                "endpoint": "https://api.anthropic.com/v1",
+                "models": ["claude-3-5-sonnet", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
+                "status": "⚠️ API key required in .env"
+            },
+            "Google API": {
+                "endpoint": "https://generativelanguage.googleapis.com/v1",
+                "models": ["gemini-1.5-pro", "gemini-1.5-flash"],
+                "status": "⚠️ API key required in .env"
+            },
+            "Taiwan Gov API (AFSPOD)": {
+                "endpoint": "https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat",
+                "models": ["llama31-taidelx-8b-32k", "llama33-ffm-70b-32k", "llama31-foxbrain-70b-32k", "llama3-taiwan-70b-8k", "llama32-ffm-11b-v-32k"],
+                "status": "✅ API key configured"
+            },
+            "Ollama (Local)": {
+                "endpoint": "http://ollama:11434",
+                "models": ["qwen2.5:7b", "qwen2.5:0.5b"],
+                "status": "✅ No API key needed"
+            }
+        }
+
+        for api_name, config in api_configs.items():
+            st.markdown(f"### {api_name}")
+            st.code(f"Endpoint: {config['endpoint']}")
+            st.caption(f"Models: {', '.join(config['models'])}")
+            st.caption(f"Status: {config['status']}")
+            st.markdown("---")
+
+with tab5:
     st.header(get_text("monitor_header", lang))
     st.caption(get_text("monitor_caption", lang))
 
@@ -1279,7 +1386,7 @@ with tab4:
 
     st.info(get_text("monitor_tip", lang))
 
-with tab4:
+with tab6:
     st.header("📚 Project Documentation")
     st.caption("Complete documentation for the AI Platform")
 
@@ -1439,7 +1546,7 @@ with tab4:
                 for tool in tools:
                     st.markdown(f"- `{tool}`")
 
-with tab5:
+with tab7:
     st.header(get_text("about_header", lang))
 
     st.markdown(f"""
