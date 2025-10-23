@@ -1242,7 +1242,7 @@ with tab4:
     import yaml
     import os
 
-    config_path = "/app/../config/litellm-config.yaml"
+    config_path = "/app/config/litellm-config.yaml"
 
     def load_litellm_config():
         try:
