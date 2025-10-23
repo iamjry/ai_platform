@@ -143,6 +143,25 @@ TRANSLATIONS = {
         "view_api_config": "查看API配置詳情",
         "api_config_info": "以下是已配置的API端點和模型信息。請在.env文件中設置相應的API金鑰。",
 
+        # Model Configuration Edit Features
+        "add_new_model": "新增模型",
+        "reload_config": "重新載入",
+        "model_name": "模型名稱",
+        "provider_type": "供應商類型",
+        "model_id": "模型ID",
+        "api_base": "API端點",
+        "api_key": "API金鑰",
+        "save": "保存",
+        "cancel": "取消",
+        "edit": "編輯",
+        "delete": "刪除",
+        "provider": "供應商",
+        "model_added_success": "✅ 模型已成功新增！請重啟LiteLLM服務以套用變更。",
+        "model_updated_success": "✅ 模型已成功更新！請重啟LiteLLM服務以套用變更。",
+        "model_deleted_success": "✅ 模型已成功刪除！請重啟LiteLLM服務以套用變更。",
+        "config_file_location": "配置文件位置",
+        "view_raw_config": "查看原始配置",
+
         # Monitor Tab
         "monitor_header": "📊 系統監控",
         "monitor_caption": "實時監控系統運行狀態",
@@ -329,6 +348,25 @@ TRANSLATIONS = {
         "api_configuration": "API配置",
         "view_api_config": "查看API配置详情",
         "api_config_info": "以下是已配置的API端点和模型信息。请在.env文件中设置相应的API密钥。",
+
+        # Model Configuration Edit Features
+        "add_new_model": "新增模型",
+        "reload_config": "重新载入",
+        "model_name": "模型名称",
+        "provider_type": "供应商类型",
+        "model_id": "模型ID",
+        "api_base": "API端点",
+        "api_key": "API密钥",
+        "save": "保存",
+        "cancel": "取消",
+        "edit": "编辑",
+        "delete": "删除",
+        "provider": "供应商",
+        "model_added_success": "✅ 模型已成功新增！请重启LiteLLM服务以应用变更。",
+        "model_updated_success": "✅ 模型已成功更新！请重启LiteLLM服务以应用变更。",
+        "model_deleted_success": "✅ 模型已成功删除！请重启LiteLLM服务以应用变更。",
+        "config_file_location": "配置文件位置",
+        "view_raw_config": "查看原始配置",
 
         # Monitor Tab
         "monitor_header": "📊 系统监控",
@@ -517,6 +555,25 @@ TRANSLATIONS = {
         "view_api_config": "View API Configuration Details",
         "api_config_info": "Below are the configured API endpoints and model information. Please set the corresponding API keys in the .env file.",
 
+        # Model Configuration Edit Features
+        "add_new_model": "Add New Model",
+        "reload_config": "Reload",
+        "model_name": "Model Name",
+        "provider_type": "Provider Type",
+        "model_id": "Model ID",
+        "api_base": "API Endpoint",
+        "api_key": "API Key",
+        "save": "Save",
+        "cancel": "Cancel",
+        "edit": "Edit",
+        "delete": "Delete",
+        "provider": "Provider",
+        "model_added_success": "✅ Model added successfully! Please restart LiteLLM service to apply changes.",
+        "model_updated_success": "✅ Model updated successfully! Please restart LiteLLM service to apply changes.",
+        "model_deleted_success": "✅ Model deleted successfully! Please restart LiteLLM service to apply changes.",
+        "config_file_location": "Config File Location",
+        "view_raw_config": "View Raw Configuration",
+
         # Monitor Tab
         "monitor_header": "📊 System Monitoring",
         "monitor_caption": "Real-time system status monitoring",
@@ -703,6 +760,25 @@ TRANSLATIONS = {
         "api_configuration": "Cấu hình API",
         "view_api_config": "Xem Chi tiết Cấu hình API",
         "api_config_info": "Dưới đây là các endpoint API và thông tin model đã cấu hình. Vui lòng thiết lập các API key tương ứng trong file .env.",
+
+        # Model Configuration Edit Features
+        "add_new_model": "Thêm Model Mới",
+        "reload_config": "Tải lại",
+        "model_name": "Tên Model",
+        "provider_type": "Loại Nhà cung cấp",
+        "model_id": "ID Model",
+        "api_base": "Endpoint API",
+        "api_key": "API Key",
+        "save": "Lưu",
+        "cancel": "Hủy",
+        "edit": "Sửa",
+        "delete": "Xóa",
+        "provider": "Nhà cung cấp",
+        "model_added_success": "✅ Thêm model thành công! Vui lòng khởi động lại dịch vụ LiteLLM để áp dụng thay đổi.",
+        "model_updated_success": "✅ Cập nhật model thành công! Vui lòng khởi động lại dịch vụ LiteLLM để áp dụng thay đổi.",
+        "model_deleted_success": "✅ Xóa model thành công! Vui lòng khởi động lại dịch vụ LiteLLM để áp dụng thay đổi.",
+        "config_file_location": "Vị trí File Cấu hình",
+        "view_raw_config": "Xem Cấu hình Gốc",
 
         # Monitor Tab
         "monitor_header": "📊 Giám sát Hệ thống",

@@ -1238,100 +1238,230 @@ with tab4:
     st.header(get_text("models_config_header", lang))
     st.caption(get_text("models_config_caption", lang))
 
-    # Model Categories
-    st.subheader(get_text("available_models", lang))
+    # Load litellm config
+    import yaml
+    import os
 
-    # Group models by provider
-    model_categories = {
-        get_text("local_models", lang): [
-            {"name": "qwen2.5:7b", "display": "Qwen 2.5 7B", "context": "32K", "status": "✅", "provider": "Ollama"},
-            {"name": "qwen2.5:0.5b", "display": "Qwen 2.5 0.5B", "context": "32K", "status": "✅", "provider": "Ollama"}
-        ],
-        get_text("openai_models", lang): [
-            {"name": "gpt-4o", "display": "GPT-4o", "context": "128K", "status": "⚠️", "provider": "OpenAI"},
-            {"name": "gpt-4o-mini", "display": "GPT-4o Mini", "context": "128K", "status": "⚠️", "provider": "OpenAI"},
-            {"name": "gpt-4", "display": "GPT-4", "context": "8K", "status": "⚠️", "provider": "OpenAI"},
-            {"name": "gpt-3.5-turbo", "display": "GPT-3.5 Turbo", "context": "16K", "status": "⚠️", "provider": "OpenAI"}
-        ],
-        get_text("anthropic_models", lang): [
-            {"name": "claude-3-5-sonnet", "display": "Claude 3.5 Sonnet", "context": "200K", "status": "⚠️", "provider": "Anthropic"},
-            {"name": "claude-3-opus", "display": "Claude 3 Opus", "context": "200K", "status": "⚠️", "provider": "Anthropic"},
-            {"name": "claude-3-sonnet", "display": "Claude 3 Sonnet", "context": "200K", "status": "⚠️", "provider": "Anthropic"},
-            {"name": "claude-3-haiku", "display": "Claude 3 Haiku", "context": "200K", "status": "⚠️", "provider": "Anthropic"}
-        ],
-        get_text("google_models", lang): [
-            {"name": "gemini-1.5-pro", "display": "Gemini 1.5 Pro", "context": "2M", "status": "⚠️", "provider": "Google"},
-            {"name": "gemini-1.5-flash", "display": "Gemini 1.5 Flash", "context": "1M", "status": "⚠️", "provider": "Google"}
-        ],
-        get_text("taiwan_gov_models", lang): [
-            {"name": "llama31-taidelx-8b-32k", "display": "Llama 3.1 TaideLX 8B", "context": "32K", "status": "✅", "provider": "Taiwan Gov"},
-            {"name": "llama33-ffm-70b-32k", "display": "Llama 3.3 FFM 70B", "context": "32K", "status": "✅", "provider": "Taiwan Gov"},
-            {"name": "llama31-foxbrain-70b-32k", "display": "Llama 3.1 FoxBrain 70B", "context": "32K", "status": "✅", "provider": "Taiwan Gov"},
-            {"name": "llama3-taiwan-70b-8k", "display": "Llama 3 Taiwan 70B", "context": "8K", "status": "✅", "provider": "Taiwan Gov"},
-            {"name": "llama32-ffm-11b-v-32k", "display": "Llama 3.2 FFM 11B Vision", "context": "32K", "status": "✅", "provider": "Taiwan Gov"}
-        ]
-    }
+    config_path = "/app/../config/litellm-config.yaml"
 
-    # Display models by category
-    for category, models in model_categories.items():
-        with st.expander(f"**{category}** ({len(models)} {get_text('models', lang)})", expanded=True):
-            for model in models:
-                col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+    def load_litellm_config():
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                return yaml.safe_load(f)
+        except Exception as e:
+            st.error(f"Error loading config: {str(e)}")
+            return None
+
+    def save_litellm_config(config_data):
+        try:
+            with open(config_path, 'w', encoding='utf-8') as f:
+                yaml.dump(config_data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+            return True
+        except Exception as e:
+            st.error(f"Error saving config: {str(e)}")
+            return False
+
+    # Load config
+    litellm_config = load_litellm_config()
+
+    if litellm_config:
+        # Initialize session state for editing
+        if 'editing_model' not in st.session_state:
+            st.session_state.editing_model = None
+        if 'adding_new_model' not in st.session_state:
+            st.session_state.adding_new_model = False
+
+        # Action buttons
+        col1, col2, col3 = st.columns([1, 1, 4])
+        with col1:
+            if st.button(get_text("add_new_model", lang), type="primary"):
+                st.session_state.adding_new_model = True
+                st.session_state.editing_model = None
+                st.rerun()
+        with col2:
+            if st.button(get_text("reload_config", lang)):
+                st.rerun()
+
+        st.divider()
+
+        # Add new model form
+        if st.session_state.adding_new_model:
+            with st.form("add_model_form"):
+                st.subheader(get_text("add_new_model", lang))
+
+                col1, col2 = st.columns(2)
                 with col1:
-                    st.markdown(f"**{model['display']}**")
-                    st.caption(f"`{model['name']}`")
+                    new_model_name = st.text_input(get_text("model_name", lang), placeholder="gpt-4")
+                    new_model_provider = st.selectbox(
+                        get_text("provider_type", lang),
+                        ["openai", "anthropic", "ollama", "gemini", "custom"]
+                    )
+                    new_model_id = st.text_input(get_text("model_id", lang), placeholder="openai/gpt-4")
+
                 with col2:
-                    st.caption(f"🏢 {model['provider']}")
-                with col3:
-                    st.caption(f"📏 {model['context']}")
-                with col4:
-                    if model['status'] == "✅":
-                        st.success(get_text("ready", lang))
+                    new_api_base = st.text_input(get_text("api_base", lang), placeholder="https://api.openai.com/v1")
+                    new_api_key = st.text_input(
+                        get_text("api_key", lang),
+                        placeholder="os.environ/OPENAI_API_KEY or actual key",
+                        type="password"
+                    )
+
+                col_submit, col_cancel = st.columns([1, 5])
+                with col_submit:
+                    submitted = st.form_submit_button(get_text("save", lang), type="primary")
+                with col_cancel:
+                    cancelled = st.form_submit_button(get_text("cancel", lang))
+
+                if submitted and new_model_name and new_model_id:
+                    # Create new model entry
+                    new_model = {
+                        "model_name": new_model_name,
+                        "litellm_params": {
+                            "model": new_model_id
+                        }
+                    }
+
+                    if new_api_base:
+                        new_model["litellm_params"]["api_base"] = new_api_base
+                    if new_api_key:
+                        new_model["litellm_params"]["api_key"] = new_api_key
+
+                    # Add to config
+                    if "model_list" not in litellm_config:
+                        litellm_config["model_list"] = []
+                    litellm_config["model_list"].append(new_model)
+
+                    if save_litellm_config(litellm_config):
+                        st.success(get_text("model_added_success", lang))
+                        st.session_state.adding_new_model = False
+                        st.rerun()
+
+                if cancelled:
+                    st.session_state.adding_new_model = False
+                    st.rerun()
+
+        # Display models
+        st.subheader(get_text("available_models", lang))
+
+        if "model_list" in litellm_config:
+            for idx, model in enumerate(litellm_config["model_list"]):
+                model_name = model.get("model_name", "Unknown")
+                litellm_params = model.get("litellm_params", {})
+                model_id = litellm_params.get("model", "")
+                api_base = litellm_params.get("api_base", "")
+                api_key = litellm_params.get("api_key", "")
+
+                # Determine provider
+                provider = "Unknown"
+                if "openai" in model_id.lower():
+                    provider = "OpenAI"
+                elif "anthropic" in model_id.lower() or "claude" in model_id.lower():
+                    provider = "Anthropic"
+                elif "ollama" in model_id.lower():
+                    provider = "Ollama"
+                elif "gemini" in model_id.lower():
+                    provider = "Google"
+                elif "llama" in model_name.lower():
+                    provider = "Taiwan Gov"
+
+                # Check if this model is being edited
+                is_editing = st.session_state.editing_model == idx
+
+                with st.expander(f"**{model_name}** - {provider}", expanded=is_editing):
+                    if is_editing:
+                        # Edit mode
+                        with st.form(f"edit_model_form_{idx}"):
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                edit_model_name = st.text_input(
+                                    get_text("model_name", lang),
+                                    value=model_name,
+                                    key=f"edit_name_{idx}"
+                                )
+                                edit_model_id = st.text_input(
+                                    get_text("model_id", lang),
+                                    value=model_id,
+                                    key=f"edit_id_{idx}"
+                                )
+
+                            with col2:
+                                edit_api_base = st.text_input(
+                                    get_text("api_base", lang),
+                                    value=api_base,
+                                    key=f"edit_base_{idx}"
+                                )
+                                # Mask API key display
+                                display_key = api_key if len(api_key) < 20 else f"{api_key[:10]}...{api_key[-10:]}"
+                                edit_api_key = st.text_input(
+                                    get_text("api_key", lang),
+                                    value=api_key,
+                                    type="password",
+                                    key=f"edit_key_{idx}"
+                                )
+
+                            col_save, col_cancel, col_delete = st.columns([1, 1, 4])
+                            with col_save:
+                                save_clicked = st.form_submit_button(get_text("save", lang), type="primary")
+                            with col_cancel:
+                                cancel_clicked = st.form_submit_button(get_text("cancel", lang))
+                            with col_delete:
+                                delete_clicked = st.form_submit_button(get_text("delete", lang), type="secondary")
+
+                            if save_clicked:
+                                # Update model
+                                litellm_config["model_list"][idx]["model_name"] = edit_model_name
+                                litellm_config["model_list"][idx]["litellm_params"]["model"] = edit_model_id
+                                if edit_api_base:
+                                    litellm_config["model_list"][idx]["litellm_params"]["api_base"] = edit_api_base
+                                else:
+                                    litellm_config["model_list"][idx]["litellm_params"].pop("api_base", None)
+                                if edit_api_key:
+                                    litellm_config["model_list"][idx]["litellm_params"]["api_key"] = edit_api_key
+                                else:
+                                    litellm_config["model_list"][idx]["litellm_params"].pop("api_key", None)
+
+                                if save_litellm_config(litellm_config):
+                                    st.success(get_text("model_updated_success", lang))
+                                    st.session_state.editing_model = None
+                                    st.rerun()
+
+                            if cancel_clicked:
+                                st.session_state.editing_model = None
+                                st.rerun()
+
+                            if delete_clicked:
+                                # Delete model
+                                litellm_config["model_list"].pop(idx)
+                                if save_litellm_config(litellm_config):
+                                    st.success(get_text("model_deleted_success", lang))
+                                    st.session_state.editing_model = None
+                                    st.rerun()
                     else:
-                        st.warning(get_text("api_key_required", lang))
-                st.markdown("---")
+                        # View mode
+                        col1, col2, col3 = st.columns([3, 3, 1])
+                        with col1:
+                            st.markdown(f"**{get_text('model_name', lang)}:** `{model_name}`")
+                            st.markdown(f"**{get_text('model_id', lang)}:** `{model_id}`")
+                        with col2:
+                            st.markdown(f"**{get_text('provider', lang)}:** {provider}")
+                            if api_base:
+                                st.markdown(f"**{get_text('api_base', lang)}:** `{api_base}`")
+                            if api_key:
+                                masked_key = f"{api_key[:10]}..." if len(api_key) > 10 else "***"
+                                st.markdown(f"**{get_text('api_key', lang)}:** `{masked_key}`")
+                        with col3:
+                            if st.button(get_text("edit", lang), key=f"edit_btn_{idx}"):
+                                st.session_state.editing_model = idx
+                                st.session_state.adding_new_model = False
+                                st.rerun()
 
-    # API Configuration Section
-    st.divider()
-    st.subheader(get_text("api_configuration", lang))
+        # Config file info
+        st.divider()
+        st.info(f"{get_text('config_file_location', lang)}: `{config_path}`")
 
-    with st.expander(get_text("view_api_config", lang)):
-        st.info(get_text("api_config_info", lang))
-
-        api_configs = {
-            "OpenAI API": {
-                "endpoint": "https://api.openai.com/v1",
-                "models": ["gpt-4o", "gpt-4o-mini", "gpt-4", "gpt-3.5-turbo"],
-                "status": "⚠️ API key required in .env"
-            },
-            "Anthropic API": {
-                "endpoint": "https://api.anthropic.com/v1",
-                "models": ["claude-3-5-sonnet", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
-                "status": "⚠️ API key required in .env"
-            },
-            "Google API": {
-                "endpoint": "https://generativelanguage.googleapis.com/v1",
-                "models": ["gemini-1.5-pro", "gemini-1.5-flash"],
-                "status": "⚠️ API key required in .env"
-            },
-            "Taiwan Gov API (AFSPOD)": {
-                "endpoint": "https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models/chat",
-                "models": ["llama31-taidelx-8b-32k", "llama33-ffm-70b-32k", "llama31-foxbrain-70b-32k", "llama3-taiwan-70b-8k", "llama32-ffm-11b-v-32k"],
-                "status": "✅ API key configured"
-            },
-            "Ollama (Local)": {
-                "endpoint": "http://ollama:11434",
-                "models": ["qwen2.5:7b", "qwen2.5:0.5b"],
-                "status": "✅ No API key needed"
-            }
-        }
-
-        for api_name, config in api_configs.items():
-            st.markdown(f"### {api_name}")
-            st.code(f"Endpoint: {config['endpoint']}")
-            st.caption(f"Models: {', '.join(config['models'])}")
-            st.caption(f"Status: {config['status']}")
-            st.markdown("---")
+        # Raw config viewer
+        with st.expander(get_text("view_raw_config", lang)):
+            st.code(yaml.dump(litellm_config, default_flow_style=False, allow_unicode=True), language="yaml")
 
 with tab5:
     st.header(get_text("monitor_header", lang))
