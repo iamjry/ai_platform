@@ -1,0 +1,315 @@
+# AI Platform - Project Overview
+
+**快速參考文檔** - 讓 AI 助手快速了解專案架構和設計重點
+
+---
+
+## 📋 項目簡介
+
+這是一個基於 Docker 的多模型 AI 對話平台，支援：
+- 本地模型（Ollama/Qwen）
+- 台灣政府 LLM API（10 個模型）
+- OpenAI GPT 系列
+- Anthropic Claude 系列
+- Google Gemini 系列
+
+## 🏗️ 系統架構
+
+### 微服務架構圖
+```
+┌─────────────┐
+│   Web UI    │ (Streamlit - Port 8501)
+│ (Python)    │
+└──────┬──────┘
+       │
+       ├──────────┐
+       │          │
+┌──────▼──────┐  ├─────────────┐
+│Agent Service│  │  LiteLLM    │ (Proxy - Port 4000)
+│(Port 8002)  │  │  Proxy      │
+└──────┬──────┘  └──────┬──────┘
+       │                │
+┌──────▼──────┐         ├─→ Ollama (Port 11434)
+│ MCP Server  │         ├─→ OpenAI API
+│(Port 8001)  │         ├─→ Claude API
+└──────┬──────┘         ├─→ Gemini API
+       │                └─→ Taiwan Gov API
+       │
+       ├──────────┬──────────┬──────────┐
+       │          │          │          │
+   ┌───▼───┐  ┌──▼───┐  ┌──▼────┐  ┌──▼──────┐
+   │Postgre│  │Qdrant│  │Redis  │  │RabbitMQ │
+   │  SQL  │  │Vector│  │Cache  │  │ Queue   │
+   └───────┘  └──────┘  └───────┘  └─────────┘
+```
+
+## 🔧 核心服務
+
+### 1. Web UI (`services/web-ui/`)
+- **技術**: Streamlit 1.33.0
+- **端口**: 8501
+- **功能**:
+  - 多模型對話界面（支援中英文）
+  - Agent Tasks 執行
+  - 文檔上傳與分析（PDF 支援）
+  - 模型配置管理
+  - 系統監控儀表板
+- **關鍵文件**:
+  - `app.py` - 主應用
+  - `i18n.py` - 多語言支援（中文/英文）
+  - `requirements.txt` - Python 依賴
+
+**重要設計決策**:
+- CSS 優化：頂部空白 2rem（主內容）/ 0.3rem（sidebar）
+- 使用 `st.markdown()` 代替 `st.header()` 以更好控制間距
+- 從 litellm-config.yaml 動態載入模型列表
+
+### 2. Agent Service (`services/agent-service/`)
+- **技術**: FastAPI
+- **端口**: 8002
+- **功能**:
+  - Agent 任務執行引擎
+  - 工具調用協調（Tool Calling）
+  - Fallback 模式（非 OpenAI 格式模型的模式匹配）
+  - 上下文管理
+- **關鍵邏輯**:
+  ```python
+  # 模型分類
+  - function_calling_models: Claude, GPT-4o（原生支援工具調用）
+  - fallback_models: Qwen, Taiwan Gov（使用模式匹配）
+
+  # 搜索檢測
+  - 網頁搜索（默認）: "搜索人工智能"
+  - 知識庫搜索: "搜索文檔中的 API" （包含 documents/database 關鍵字）
+  ```
+- **台灣政府模型**（10 個）:
+  1. llama31-taidelx-8b-32k
+  2. llama3-taiwan-70b-8k
+  3. llama31-foxbrain-70b-32k
+  4. llama33-ffm-70b-32k
+  5. phi4-reasoning-plus-32k
+  6. magistral-small-2506-32k
+  7. google-gemma-3-27b-32k
+  8. llama4-scout-17b-16e-instruct-32k
+  9. gpt-oss-20b-32k
+  10. gpt-oss-120b-32k
+
+### 3. MCP Server (`services/mcp-server/`)
+- **技術**: FastAPI
+- **端口**: 8001
+- **功能**:
+  - 20+ 工具提供（搜索、數據處理、通知等）
+  - 向量搜索（Qdrant）
+  - 文檔管理（PostgreSQL）
+  - Redis 緩存
+- **重要工具**:
+  - `search_knowledge_base` - 知識庫搜索
+  - `web_search` - 網頁搜索（模擬）
+  - `send_email` - 郵件發送
+  - `create_task` - 任務創建
+  - `analyze_data` - 數據分析
+  - `generate_chart` - 圖表生成
+
+**已修復的 Bug**:
+- ✅ 搜索緩存問題（2025-10）：緩存返回 list 而非 dict，已修正為緩存完整 response 對象
+
+### 4. LiteLLM Proxy
+- **配置**: `config/litellm-config.yaml`
+- **端口**: 4000
+- **功能**:
+  - 統一 API 代理層
+  - 支援多個 LLM 提供商
+  - API Key 管理
+  - 請求路由
+
+## 📁 關鍵配置文件
+
+### `config/litellm-config.yaml`
+```yaml
+model_list:
+  - model_name: qwen2.5
+    display_name: "Qwen 2.5 (本地)"
+    litellm_params:
+      model: ollama/qwen2.5
+
+  - model_name: llama31-taidelx-8b-32k
+    display_name: "Taiwan Gov - Llama 3.1 TaideLX"
+    litellm_params:
+      model: Taiwan_LLM/Llama-3.1-TaideLX-8B-32K
+      api_base: https://...
+      api_key: os.environ/TAIWAN_GOV_API_KEY
+```
+
+### `docker-compose.yml`
+- 定義所有服務、網絡、數據卷
+- 健康檢查配置
+- 依賴關係管理
+
+## 🔄 最近重大變更（2025-10）
+
+### 1. 網頁搜索功能 ✅
+- **Commit**: `0c321a9`
+- **變更**:
+  - 修改 `detect_tool_intent()` 支援 web_search
+  - 默認使用網頁搜索（除非明確指定 documents/database）
+  - 添加 web_search 結果格式化
+  - 測試腳本：`tests/test_web_search.py`
+
+### 2. UI 間距優化 ✅
+- **Commits**: `1c0e65e`, `2d3141b`, `1b735cd`, `d20b593`, `745b0af`
+- **變更**:
+  - 主內容區域：padding-top 2rem
+  - Sidebar：padding-top 0.3rem
+  - 減少所有元素間距（headers, dividers, alerts）
+  - 修正 Logo 容器負邊距問題
+
+### 3. 台灣政府模型更新 ✅
+- **變更**:
+  - 從 9 個增加到 10 個模型
+  - 移除：llama32-ffm-11b-v-32k
+  - 新增：phi4, magistral, gemma-3, llama4, gpt-oss
+
+### 4. Pandas 版本修正 ✅
+- **問題**: `pandas==2.0.3` 與 Python 3.11 不兼容
+- **解決**: 改為 `pandas>=2.0.0`
+
+## 🧪 測試
+
+### 測試文件位置
+- `tests/test_all_models_search.py` - 多模型知識庫搜索測試
+- `tests/test_web_search.py` - 網頁搜索功能測試
+- `tests/test_knowledge_base_search.py` - 知識庫搜索檢測測試
+- `tests/test_search.py` - 基本搜索測試
+
+### 運行測試
+```bash
+python3 tests/test_web_search.py
+python3 tests/test_all_models_search.py
+```
+
+## 🔑 環境變數
+
+需要在 `.env` 或環境中設定：
+```bash
+# API Keys
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+GEMINI_API_KEY=...
+TAIWAN_GOV_API_KEY=...
+
+# Service URLs
+AGENT_SERVICE_URL=http://agent-service:8000
+MCP_SERVER_URL=http://mcp-server:8001
+LITELLM_URL=http://litellm:4000
+
+# Database
+POSTGRES_USER=admin
+POSTGRES_PASSWORD=admin123
+POSTGRES_DB=ai_platform
+```
+
+## 🚀 常見開發任務
+
+### 1. 添加新模型
+1. 編輯 `config/litellm-config.yaml`
+2. 添加 model_list 條目（model_name, display_name, litellm_params）
+3. 如需 fallback 模式，更新 `services/agent-service/main.py` 的 `model_name_map`
+4. 重啟服務：`docker-compose build agent-service && docker-compose up -d`
+
+### 2. 修改 UI 樣式
+1. 編輯 `services/web-ui/app.py` 的 CSS 區塊（約第 146 行）
+2. 重建 Web UI：`docker-compose build web-ui && docker-compose up -d web-ui`
+3. 瀏覽器硬刷新（Cmd+Shift+R）
+
+### 3. 添加新工具
+1. 在 `services/mcp-server/main.py` 添加:
+   - Pydantic Request Model
+   - `/tools/{tool_name}` endpoint
+   - 工具描述到 `get_tool_definitions()`
+2. 在 `services/agent-service/main.py` 添加:
+   - `detect_tool_intent()` 的模式檢測
+   - 結果格式化邏輯
+3. 重建兩個服務
+
+### 4. 調試流程
+```bash
+# 查看服務日誌
+docker-compose logs -f agent-service
+docker-compose logs -f mcp-server
+docker-compose logs -f web-ui
+
+# 進入容器
+docker exec -it ai-agent-service bash
+docker exec -it ai-mcp-server bash
+
+# 重啟單一服務
+docker-compose restart agent-service
+```
+
+## 📊 數據庫架構
+
+### PostgreSQL
+- **文檔表**: 存儲上傳的文件和內容
+- **用戶表**: 用戶資訊（如啟用認證）
+- **對話歷史**: 對話記錄
+
+### Qdrant（向量數據庫）
+- **Collection**: documents
+- **向量維度**: 依嵌入模型而定
+- **用途**: 語義搜索
+
+### Redis
+- **TTL**: 300 秒（搜索緩存）
+- **鍵格式**: `search:{query}`
+
+## 🎯 設計原則
+
+1. **微服務架構**: 每個服務專注單一職責
+2. **統一代理**: LiteLLM 統一處理所有 LLM API
+3. **Fallback 機制**: 非 OpenAI 格式模型使用模式匹配
+4. **緩存優先**: Redis 緩存搜索結果減少重複查詢
+5. **健康檢查**: 所有服務都有健康檢查端點
+6. **國際化**: Web UI 支援中英文切換
+
+## 🐛 已知問題和限制
+
+1. **認證服務**: 目前無認證（no-auth 版本）
+2. **Web 搜索**: 目前是模擬數據，未接入真實搜索 API
+3. **PDF 分析**: 僅支援文本提取，不支援 OCR
+4. **台灣政府 API**: 需要有效 API Key
+
+## 📝 Git 工作流程
+
+- **Main 分支**: 穩定版本
+- **提交格式**: 使用 conventional commits
+  - `feat:` - 新功能
+  - `fix:` - Bug 修復
+  - `style:` - 樣式調整
+  - `refactor:` - 重構
+  - `docs:` - 文檔更新
+
+## 🔗 重要文件快速索引
+
+| 文件 | 用途 |
+|------|------|
+| `services/web-ui/app.py` | Web UI 主程序 |
+| `services/agent-service/main.py` | Agent 執行引擎 |
+| `services/mcp-server/main.py` | 工具服務器 |
+| `config/litellm-config.yaml` | 模型配置 |
+| `docker-compose.yml` | 容器編排 |
+| `tests/` | 測試腳本目錄 |
+
+## 💡 提示
+
+當開始新對話時，AI 應該：
+1. 先閱讀本文檔了解架構
+2. 根據任務需求再讀取具體文件
+3. 優先使用測試腳本驗證功能
+4. 修改代碼後記得重建對應的 Docker 容器
+5. 重要變更需要更新本文檔
+
+---
+
+**最後更新**: 2025-10-24
+**版本**: 1.0
+**維護者**: AI Platform Team
