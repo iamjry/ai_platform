@@ -159,16 +159,54 @@ st.markdown("""
     /* Reduce sidebar padding */
     section[data-testid="stSidebar"] > div {
         padding-top: 1rem !important;
+        padding-bottom: 0.5rem !important;
     }
 
     section[data-testid="stSidebar"] .element-container {
         margin-bottom: 0.3rem !important;
     }
 
-    /* Reduce header spacing */
-    h1, h2, h3 {
+    section[data-testid="stSidebar"] hr {
         margin-top: 0.5rem !important;
         margin-bottom: 0.5rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stSelectbox {
+        margin-bottom: 0.3rem !important;
+    }
+
+    section[data-testid="stSidebar"] [data-testid="stMarkdownContainer"] {
+        margin-bottom: 0.3rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stAlert {
+        padding: 0.5rem !important;
+        margin-bottom: 0.3rem !important;
+    }
+
+    section[data-testid="stSidebar"] .stColumns {
+        gap: 0.3rem !important;
+    }
+
+    /* Reduce header spacing */
+    h1, h2, h3 {
+        margin-top: 0.3rem !important;
+        margin-bottom: 0.3rem !important;
+    }
+
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3 {
+        margin-top: 0.2rem !important;
+        margin-bottom: 0.2rem !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+    }
+
+    /* Reduce caption spacing */
+    .caption {
+        margin-top: 0.2rem !important;
+        margin-bottom: 0.2rem !important;
     }
 
     .main-header {
@@ -204,9 +242,9 @@ with st.sidebar:
     </div>
     """, unsafe_allow_html=True)
 
-    st.divider()
+    st.markdown("---")
 
-    st.header(get_text("settings", lang))
+    st.markdown(f"### {get_text('settings', lang)}")
 
     # Language selector
     selected_lang = st.selectbox(
@@ -256,7 +294,7 @@ with st.sidebar:
 
     # Show model information
     st.markdown("---")
-    st.subheader("📋 " + ("模型資訊" if lang == "zh-TW" else "Model Information"))
+    st.markdown("### 📋 " + ("模型資訊" if lang == "zh-TW" else "Model Information"))
 
     # Get model info
     model_info = MODEL_CONTEXT_LIMITS.get(model_choice, {})
