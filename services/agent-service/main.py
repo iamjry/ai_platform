@@ -319,10 +319,15 @@ async def execute_agent(request: AgentRequest):
             "qwen2.5-7b": "qwen2.5-7b",
             # Taiwan Government LLM API models
             "llama31-taidelx-8b-32k": "llama31-taidelx-8b-32k",
-            "llama33-ffm-70b-32k": "llama33-ffm-70b-32k",
-            "llama31-foxbrain-70b-32k": "llama31-foxbrain-70b-32k",
             "llama3-taiwan-70b-8k": "llama3-taiwan-70b-8k",
-            "llama32-ffm-11b-v-32k": "llama32-ffm-11b-v-32k"
+            "llama31-foxbrain-70b-32k": "llama31-foxbrain-70b-32k",
+            "llama33-ffm-70b-32k": "llama33-ffm-70b-32k",
+            "phi4-reasoning-plus-32k": "phi4-reasoning-plus-32k",
+            "magistral-small-2506-32k": "magistral-small-2506-32k",
+            "google-gemma-3-27b-32k": "google-gemma-3-27b-32k",
+            "llama4-scout-17b-16e-instruct-32k": "llama4-scout-17b-16e-instruct-32k",
+            "gpt-oss-20b-32k": "gpt-oss-20b-32k",
+            "gpt-oss-120b-32k": "gpt-oss-120b-32k"
         }
 
         # Get actual model name for API calls
@@ -373,8 +378,13 @@ async def execute_agent(request: AgentRequest):
             })
 
             try:
+                # Log tool call for debugging
+                logger.info(f"Calling tool in fallback mode: {tool_name} with args: {tool_args}")
+
                 # Call the tool directly
                 tool_result = await call_mcp_tool(tool_name, tool_args)
+
+                logger.info(f"Tool result: {tool_result}")
 
                 steps.append({
                     "step": "tool_execution",
@@ -390,7 +400,15 @@ async def execute_agent(request: AgentRequest):
                     result = f"✅ 任務已創建！\n\n任務ID: {tool_result.get('id')}\n標題: {tool_args['title']}\n狀態: {tool_result.get('status')}"
                 elif tool_name == "search_knowledge_base":
                     results = tool_result.get('results', [])
-                    result = f"✅ 搜索完成！找到 {len(results)} 個結果。\n\n" + "\n".join([f"- {r.get('title', 'N/A')}" for r in results[:3]])
+                    if len(results) > 0:
+                        result_items = []
+                        for i, r in enumerate(results[:5], 1):
+                            title = r.get('title', 'N/A')
+                            content = r.get('content', '')[:200]  # First 200 chars
+                            result_items.append(f"{i}. **{title}**\n   {content}...")
+                        result = f"✅ 搜索完成！找到 {len(results)} 個結果。\n\n" + "\n\n".join(result_items)
+                    else:
+                        result = f"✅ 搜索完成！找到 0 個結果。\n\n搜尋詞: \"{tool_args.get('query', 'N/A')}\"\n\n資料庫中可能沒有相關文檔，請嘗試其他搜尋詞。"
                 else:
                     result = f"✅ 工具執行成功！\n\n{json.dumps(tool_result, ensure_ascii=False, indent=2)}"
 
