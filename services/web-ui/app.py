@@ -146,20 +146,28 @@ def get_context_usage_info(history, model):
 # Custom CSS
 st.markdown("""
 <style>
-    /* Reduce top padding/margin */
+    /* Main content area padding */
     .main > div {
-        padding-top: 1rem !important;
+        padding-top: 2rem !important;
     }
 
     .block-container {
-        padding-top: 1rem !important;
+        padding-top: 2rem !important;
         padding-bottom: 1rem !important;
     }
 
-    /* Reduce sidebar padding */
+    /* Reduce sidebar padding aggressively */
+    section[data-testid="stSidebar"] {
+        padding-top: 0 !important;
+    }
+
     section[data-testid="stSidebar"] > div {
-        padding-top: 1rem !important;
-        padding-bottom: 0.5rem !important;
+        padding-top: 0.3rem !important;
+        padding-bottom: 0.3rem !important;
+    }
+
+    section[data-testid="stSidebar"] > div > div {
+        padding-top: 0 !important;
     }
 
     /* Ensure first element in sidebar has no extra margin */
