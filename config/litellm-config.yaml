@@ -65,10 +65,10 @@ model_list:
     model: openai/llama31-taidelx-8b-32k
     api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
     api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
-- model_name: llama33-ffm-70b-32k
-  display_name: Llama 3.3 FFM 70B-32K (Taiwan)
+- model_name: llama3-taiwan-70b-8k
+  display_name: Llama 3 Taiwan 70B-8K (Taiwan)
   litellm_params:
-    model: openai/llama33-ffm-70b-32k
+    model: openai/llama3-taiwan-70b-8k
     api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
     api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
 - model_name: llama31-foxbrain-70b-32k
@@ -77,16 +77,46 @@ model_list:
     model: openai/llama31-foxbrain-70b-32k
     api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
     api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
-- model_name: llama3-taiwan-70b-8k
-  display_name: Llama 3 Taiwan 70B-8K (Taiwan)
+- model_name: llama33-ffm-70b-32k
+  display_name: Llama 3.3 FFM 70B-32K (Taiwan)
   litellm_params:
-    model: openai/llama3-taiwan-70b-8k
+    model: openai/llama33-ffm-70b-32k
     api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
     api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
-- model_name: llama32-ffm-11b-v-32k
-  display_name: Llama 3.2 FFM 11B Vision-32K (Taiwan)
+- model_name: phi4-reasoning-plus-32k
+  display_name: Phi-4 Reasoning Plus 32K (Taiwan)
   litellm_params:
-    model: openai/llama32-ffm-11b-v-32k
+    model: openai/phi4-reasoning-plus-32k
+    api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
+    api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
+- model_name: magistral-small-2506-32k
+  display_name: Magistral Small 2506-32K (Taiwan)
+  litellm_params:
+    model: openai/magistral-small-2506-32k
+    api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
+    api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
+- model_name: google-gemma-3-27b-32k
+  display_name: Google Gemma 3 27B-32K (Taiwan)
+  litellm_params:
+    model: openai/google-gemma-3-27b-32k
+    api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
+    api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
+- model_name: llama4-scout-17b-16e-instruct-32k
+  display_name: Llama 4 Scout 17B-16E Instruct-32K (Taiwan)
+  litellm_params:
+    model: openai/llama4-scout-17b-16e-instruct-32k
+    api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
+    api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
+- model_name: gpt-oss-20b-32k
+  display_name: GPT-OSS 20B-32K (Taiwan)
+  litellm_params:
+    model: openai/gpt-oss-20b-32k
+    api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
+    api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
+- model_name: gpt-oss-120b-32k
+  display_name: GPT-OSS 120B-32K (Taiwan)
+  litellm_params:
+    model: openai/gpt-oss-120b-32k
     api_base: https://afspod-llm-api.dginfra.gov.tw/projects/392a1838-7af3-4679-8360-c0e24b4bcf8f/api/models
     api_key: 1191d4e5-f737-4f7c-b3b5-e80eeac656b5
 litellm_settings:
