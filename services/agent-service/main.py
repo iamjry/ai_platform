@@ -262,13 +262,13 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
         })
 
     # Search patterns - extract the actual search term
-    search_keywords = ["搜索", "搜尋", "search", "查找", "find", "搜"]
+    search_keywords = ["搜索", "搜尋", "search", "查找", "find", "搜", "找", "尋找", "寻找"]
     for keyword in search_keywords:
         if keyword in task_lower:
             # Extract search query by removing the search keyword and common connecting words
             query = task
-            # Remove search keywords with common patterns
-            query = re.sub(r'(搜索|搜尋|search\s+for|查找|find|搜)\s*(關於|关于|about|for)?\s*', '', query, flags=re.IGNORECASE)
+            # Remove search keywords with common patterns - updated to handle more cases
+            query = re.sub(r'(搜索|搜尋|search\s+for|search|查找|find|搜|找|尋找|寻找)\s*(關於|关于|about|for)?\s*', '', query, flags=re.IGNORECASE)
             # Remove common Chinese article/connecting words at the end
             query = re.sub(r'[的之]?(文檔|文档|檔案|档案|資料|资料|內容|内容|信息|資訊|资讯)$', '', query)
             # Clean up
@@ -276,6 +276,7 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
             # If query is empty or too short, use original task
             if len(query) < 2:
                 query = task
+            logger.info(f"Search detected - Original: '{task}', Extracted query: '{query}'")
             return ("search_knowledge_base", {
                 "query": query,
                 "limit": 5
