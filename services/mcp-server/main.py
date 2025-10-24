@@ -444,10 +444,12 @@ async def search_knowledge_base(request: SearchRequest):
                         "metadata": row["metadata"]
                     })
 
-        if results:
-            await redis_client.setex(cache_key, 300, json.dumps(results))
+        response = {"results": results, "count": len(results)}
 
-        return {"results": results, "count": len(results)}
+        if results:
+            await redis_client.setex(cache_key, 300, json.dumps(response))
+
+        return response
 
     except Exception as e:
         logger.error(f"Search error: {e}")
