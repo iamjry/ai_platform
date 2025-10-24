@@ -162,6 +162,12 @@ st.markdown("""
         padding-bottom: 0.5rem !important;
     }
 
+    /* Ensure first element in sidebar has no extra margin */
+    section[data-testid="stSidebar"] .element-container:first-child {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+
     section[data-testid="stSidebar"] .element-container {
         margin-bottom: 0.3rem !important;
     }
