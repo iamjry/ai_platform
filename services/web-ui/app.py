@@ -146,12 +146,37 @@ def get_context_usage_info(history, model):
 # Custom CSS
 st.markdown("""
 <style>
+    /* Reduce top padding/margin */
+    .main > div {
+        padding-top: 1rem !important;
+    }
+
+    .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+
+    /* Reduce sidebar padding */
+    section[data-testid="stSidebar"] > div {
+        padding-top: 1rem !important;
+    }
+
+    section[data-testid="stSidebar"] .element-container {
+        margin-bottom: 0.3rem !important;
+    }
+
+    /* Reduce header spacing */
+    h1, h2, h3 {
+        margin-top: 0.5rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
     .main-header {
         font-size: 2.5rem;
         font-weight: bold;
         color: #1f77b4;
         text-align: center;
-        padding: 1rem;
+        padding: 0.3rem;
     }
     .status-box {
         padding: 1rem;
