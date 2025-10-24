@@ -270,17 +270,31 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
             # Remove search keywords with common patterns - updated to handle more cases
             query = re.sub(r'(搜索|搜尋|search\s+for|search|查找|find|搜|找|尋找|寻找)\s*(關於|关于|about|for)?\s*', '', query, flags=re.IGNORECASE)
             # Remove common Chinese article/connecting words at the end
-            query = re.sub(r'[的之]?(文檔|文档|檔案|档案|資料|资料|內容|内容|信息|資訊|资讯)$', '', query)
+            query = re.sub(r'[的之]?(文章|内容|信息|資訊|资讯)$', '', query)
             # Clean up
             query = query.strip().lstrip('的之').rstrip('的之').strip()
             # If query is empty or too short, use original task
             if len(query) < 2:
                 query = task
-            logger.info(f"Search detected - Original: '{task}', Extracted query: '{query}'")
-            return ("search_knowledge_base", {
-                "query": query,
-                "limit": 5
-            })
+
+            # Determine if this should be knowledge base search or web search
+            # Knowledge base search: if task mentions "文檔", "知識庫", "內部資料", "檔案", "資料庫", "documents", "database"
+            knowledge_base_keywords = ["文檔", "文档", "檔案", "档案", "知識庫", "知识库", "內部資料", "内部资料", "資料庫", "资料库", "documents", "document", "database", "knowledge base"]
+            use_knowledge_base = any(kb_keyword in task.lower() for kb_keyword in knowledge_base_keywords)
+
+            if use_knowledge_base:
+                logger.info(f"Knowledge base search detected - Original: '{task}', Extracted query: '{query}'")
+                return ("search_knowledge_base", {
+                    "query": query,
+                    "limit": 5
+                })
+            else:
+                # Default to web search for general queries
+                logger.info(f"Web search detected - Original: '{task}', Extracted query: '{query}'")
+                return ("web_search", {
+                    "query": query,
+                    "num_results": 5
+                })
 
     return None
 
@@ -399,6 +413,19 @@ async def execute_agent(request: AgentRequest):
                     result = f"✅ 郵件已成功發送！\n\n收件人: {', '.join(tool_args['to'])}\n主旨: {tool_args['subject']}\n郵件ID: {tool_result.get('email_id')}\n發送時間: {tool_result.get('sent_at')}"
                 elif tool_name == "create_task":
                     result = f"✅ 任務已創建！\n\n任務ID: {tool_result.get('id')}\n標題: {tool_args['title']}\n狀態: {tool_result.get('status')}"
+                elif tool_name == "web_search":
+                    results = tool_result.get('results', [])
+                    if len(results) > 0:
+                        result_items = []
+                        for i, r in enumerate(results[:5], 1):
+                            title = r.get('title', 'N/A')
+                            snippet = r.get('snippet', '')[:150]  # First 150 chars
+                            url = r.get('url', '')
+                            source = r.get('source', 'Unknown')
+                            result_items.append(f"{i}. **{title}**\n   {snippet}...\n   來源: {source}\n   連結: {url}")
+                        result = f"✅ 網頁搜索完成！找到 {len(results)} 個結果。\n\n" + "\n\n".join(result_items)
+                    else:
+                        result = f"✅ 網頁搜索完成！找到 0 個結果。\n\n搜尋詞: \"{tool_args.get('query', 'N/A')}\"\n\n請嘗試其他搜尋詞。"
                 elif tool_name == "search_knowledge_base":
                     results = tool_result.get('results', [])
                     if len(results) > 0:
