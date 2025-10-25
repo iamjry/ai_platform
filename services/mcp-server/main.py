@@ -13,6 +13,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 import pandas as pd
 import io
 import base64
+from rag_service import rag_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,13 +54,29 @@ class CSVProcessRequest(BaseModel):
 
 class SemanticSearchRequest(BaseModel):
     query: str
-    similarity_threshold: float = 0.7
+    similarity_threshold: float = 0.5
     top_k: int = 5
+    filter_metadata: Optional[Dict] = None
 
 class WebSearchRequest(BaseModel):
     query: str
     num_results: int = 5
     time_range: Optional[str] = None
+
+class DocumentUploadRequest(BaseModel):
+    title: str
+    content: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = []
+    metadata: Optional[Dict] = {}
+
+class DocumentUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    content: Optional[str] = None
+    category: Optional[str] = None
+    tags: Optional[List[str]] = None
+    metadata: Optional[Dict] = None
+    is_published: Optional[bool] = None
 
 class SummarizeRequest(BaseModel):
     document_id: int
@@ -176,6 +193,10 @@ async def startup():
         qdrant_url = os.getenv("QDRANT_URL", "http://qdrant:6333")
         vector_db = QdrantClient(url=qdrant_url)
         logger.info("✓ Qdrant connected")
+
+        # 初始化 RAG Service
+        await rag_service.initialize()
+        logger.info("✓ RAG Service initialized")
 
         # 初始化Redis
         redis_url = os.getenv("REDIS_URL", "redis://:password@redis:6379")
@@ -1143,6 +1164,350 @@ async def financial_calculator(request: FinancialCalculatorRequest):
         logger.error(f"Financial calculator error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== Enterprise RAG APIs ====================
+
+@app.post("/rag/documents/upload")
+async def upload_document(file: UploadFile = File(...), category: Optional[str] = None, tags: Optional[str] = None):
+    """Upload and process document with RAG"""
+    try:
+        # Read file content
+        file_content = await file.read()
+
+        # Extract text from file
+        try:
+            text_content = rag_service.extract_text_from_file(file_content, file.filename)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+
+        if not text_content.strip():
+            raise HTTPException(status_code=400, detail="No text content extracted from file")
+
+        # Parse tags
+        tag_list = [t.strip() for t in tags.split(",")] if tags else []
+
+        # Store document in database
+        async with db_pool.acquire() as conn:
+            doc_id = await conn.fetchval(
+                """
+                INSERT INTO documents (title, content, category, tags, document_type, metadata)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id
+                """,
+                file.filename,
+                text_content,
+                category,
+                tag_list,
+                file.content_type,
+                json.dumps({"original_filename": file.filename, "size": len(file_content)})
+            )
+
+        # Process document with RAG (vectorization)
+        chunks_count = await rag_service.process_document(
+            doc_id=doc_id,
+            title=file.filename,
+            content=text_content,
+            metadata={"category": category, "tags": tag_list}
+        )
+
+        logger.info(f"Document {doc_id} uploaded and processed: {chunks_count} chunks")
+
+        return {
+            "doc_id": doc_id,
+            "title": file.filename,
+            "content_length": len(text_content),
+            "chunks_count": chunks_count,
+            "category": category,
+            "tags": tag_list,
+            "status": "success"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Document upload error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/documents/text")
+async def create_document_from_text(request: DocumentUploadRequest):
+    """Create document from text with RAG"""
+    try:
+        if not request.content:
+            raise HTTPException(status_code=400, detail="Content is required")
+
+        # Store document in database
+        async with db_pool.acquire() as conn:
+            doc_id = await conn.fetchval(
+                """
+                INSERT INTO documents (title, content, category, tags, metadata)
+                VALUES ($1, $2, $3, $4, $5)
+                RETURNING id
+                """,
+                request.title,
+                request.content,
+                request.category,
+                request.tags,
+                json.dumps(request.metadata)
+            )
+
+        # Process document with RAG
+        chunks_count = await rag_service.process_document(
+            doc_id=doc_id,
+            title=request.title,
+            content=request.content,
+            metadata=request.metadata
+        )
+
+        logger.info(f"Document {doc_id} created and processed: {chunks_count} chunks")
+
+        return {
+            "doc_id": doc_id,
+            "title": request.title,
+            "content_length": len(request.content),
+            "chunks_count": chunks_count,
+            "status": "success"
+        }
+
+    except Exception as e:
+        logger.error(f"Document creation error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/rag/documents")
+async def list_documents(
+    skip: int = 0,
+    limit: int = 20,
+    category: Optional[str] = None,
+    search: Optional[str] = None
+):
+    """List documents with optional filtering"""
+    try:
+        async with db_pool.acquire() as conn:
+            query = "SELECT id, title, category, tags, created_at, updated_at FROM documents WHERE 1=1"
+            params = []
+            param_count = 0
+
+            if category:
+                param_count += 1
+                query += f" AND category = ${param_count}"
+                params.append(category)
+
+            if search:
+                param_count += 1
+                query += f" AND (title ILIKE ${param_count} OR content ILIKE ${param_count})"
+                params.append(f"%{search}%")
+
+            query += f" ORDER BY created_at DESC LIMIT ${param_count + 1} OFFSET ${param_count + 2}"
+            params.extend([limit, skip])
+
+            rows = await conn.fetch(query, *params)
+
+            documents = []
+            for row in rows:
+                documents.append({
+                    "id": row["id"],
+                    "title": row["title"],
+                    "category": row["category"],
+                    "tags": row["tags"],
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None
+                })
+
+            # Get total count
+            count_query = "SELECT COUNT(*) FROM documents WHERE 1=1"
+            count_params = []
+            if category:
+                count_query += " AND category = $1"
+                count_params.append(category)
+            if search:
+                idx = len(count_params) + 1
+                count_query += f" AND (title ILIKE ${idx} OR content ILIKE ${idx})"
+                count_params.append(f"%{search}%")
+
+            total = await conn.fetchval(count_query, *count_params)
+
+            return {
+                "documents": documents,
+                "total": total,
+                "skip": skip,
+                "limit": limit
+            }
+
+    except Exception as e:
+        logger.error(f"List documents error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/rag/documents/{doc_id}")
+async def get_document_detail(doc_id: int):
+    """Get document details"""
+    try:
+        async with db_pool.acquire() as conn:
+            doc = await conn.fetchrow(
+                "SELECT * FROM documents WHERE id = $1",
+                doc_id
+            )
+
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found")
+
+            return {
+                "id": doc["id"],
+                "title": doc["title"],
+                "content": doc["content"],
+                "category": doc["category"],
+                "tags": doc["tags"],
+                "metadata": doc["metadata"],
+                "created_at": doc["created_at"].isoformat() if doc["created_at"] else None,
+                "updated_at": doc["updated_at"].isoformat() if doc["updated_at"] else None
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/rag/documents/{doc_id}")
+async def update_document(doc_id: int, request: DocumentUpdateRequest):
+    """Update document"""
+    try:
+        async with db_pool.acquire() as conn:
+            # Check if document exists
+            doc = await conn.fetchrow("SELECT id, content FROM documents WHERE id = $1", doc_id)
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found")
+
+            # Build update query
+            updates = []
+            params = []
+            param_count = 0
+
+            if request.title is not None:
+                param_count += 1
+                updates.append(f"title = ${param_count}")
+                params.append(request.title)
+
+            if request.content is not None:
+                param_count += 1
+                updates.append(f"content = ${param_count}")
+                params.append(request.content)
+
+            if request.category is not None:
+                param_count += 1
+                updates.append(f"category = ${param_count}")
+                params.append(request.category)
+
+            if request.tags is not None:
+                param_count += 1
+                updates.append(f"tags = ${param_count}")
+                params.append(request.tags)
+
+            if request.metadata is not None:
+                param_count += 1
+                updates.append(f"metadata = ${param_count}")
+                params.append(json.dumps(request.metadata))
+
+            if request.is_published is not None:
+                param_count += 1
+                updates.append(f"is_published = ${param_count}")
+                params.append(request.is_published)
+
+            if not updates:
+                raise HTTPException(status_code=400, detail="No updates provided")
+
+            param_count += 1
+            params.append(doc_id)
+            query = f"UPDATE documents SET {', '.join(updates)} WHERE id = ${param_count}"
+
+            await conn.execute(query, *params)
+
+            # Re-process document if content changed
+            if request.content is not None:
+                await rag_service.delete_document_vectors(doc_id)
+                await rag_service.process_document(
+                    doc_id=doc_id,
+                    title=request.title or "Untitled",
+                    content=request.content,
+                    metadata=request.metadata
+                )
+
+        return {"doc_id": doc_id, "status": "updated"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Update document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/rag/documents/{doc_id}")
+async def delete_document(doc_id: int):
+    """Delete document and its vectors"""
+    try:
+        async with db_pool.acquire() as conn:
+            # Check if document exists
+            doc = await conn.fetchrow("SELECT id FROM documents WHERE id = $1", doc_id)
+            if not doc:
+                raise HTTPException(status_code=404, detail="Document not found")
+
+            # Delete from database
+            await conn.execute("DELETE FROM documents WHERE id = $1", doc_id)
+
+        # Delete vectors from Qdrant
+        await rag_service.delete_document_vectors(doc_id)
+
+        logger.info(f"Document {doc_id} deleted")
+
+        return {"doc_id": doc_id, "status": "deleted"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Delete document error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/rag/search")
+async def semantic_search(request: SemanticSearchRequest):
+    """Semantic search using RAG"""
+    try:
+        results = await rag_service.semantic_search(
+            query=request.query,
+            limit=request.top_k,
+            score_threshold=request.similarity_threshold,
+            filter_metadata=request.filter_metadata
+        )
+
+        return {
+            "query": request.query,
+            "results": results,
+            "count": len(results)
+        }
+
+    except Exception as e:
+        logger.error(f"Semantic search error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/rag/stats")
+async def get_rag_stats():
+    """Get RAG system statistics"""
+    try:
+        # Get document count from PostgreSQL
+        async with db_pool.acquire() as conn:
+            doc_count = await conn.fetchval("SELECT COUNT(*) FROM documents")
+            published_count = await conn.fetchval("SELECT COUNT(*) FROM documents WHERE is_published = true")
+
+        # Get vector stats from Qdrant
+        vector_stats = await rag_service.get_collection_stats()
+
+        return {
+            "documents": {
+                "total": doc_count,
+                "published": published_count
+            },
+            "vectors": vector_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Get RAG stats error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Root ====================
 
 @app.get("/")
@@ -1152,9 +1517,10 @@ async def root():
         "version": "2.0.0",
         "status": "running",
         "tools_count": 28,
+        "features": ["Enterprise RAG", "Vector Search", "Document Management"],
         "categories": [
             "search", "database", "document", "analysis", "visualization",
             "data_processing", "content", "security", "workflow", "communication",
-            "integration", "execution", "file", "analytics", "finance"
+            "integration", "execution", "file", "analytics", "finance", "rag"
         ]
     }

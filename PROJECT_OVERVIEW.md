@@ -7,11 +7,19 @@
 ## 📋 項目簡介
 
 這是一個基於 Docker 的多模型 AI 對話平台，支援：
+- **企業級 RAG 系統**（檢索增強生成）
 - 本地模型（Ollama/Qwen）
 - 台灣政府 LLM API（10 個模型）
 - OpenAI GPT 系列
 - Anthropic Claude 系列
 - Google Gemini 系列
+
+### ✨ 核心功能
+1. **多模型對話** - 支援 15+ LLM 模型
+2. **企業 RAG** - 文檔上傳、向量化、語義搜索
+3. **Agent 任務** - 工具調用、網頁搜索、知識庫檢索
+4. **文檔管理** - 完整 CRUD、分類、標籤系統
+5. **向量搜索** - Qdrant 驅動的語義搜索
 
 ## 🏗️ 系統架構
 
@@ -98,11 +106,30 @@
 - **技術**: FastAPI
 - **端口**: 8001
 - **功能**:
+  - **企業 RAG 系統** 🆕
+    - 文檔上傳與處理（PDF、DOCX、TXT）
+    - 自動向量化（sentence-transformers）
+    - 語義搜索（Qdrant）
+    - 文檔管理 CRUD
   - 20+ 工具提供（搜索、數據處理、通知等）
   - 向量搜索（Qdrant）
   - 文檔管理（PostgreSQL）
   - Redis 緩存
-- **重要工具**:
+- **RAG 組件**:
+  - **rag_service.py** - 核心 RAG 服務類
+    - 嵌入模型：all-MiniLM-L6-v2（384維）
+    - 文本提取：PDF、DOCX、TXT
+    - 分塊策略：500 words/chunk，50 words overlap
+    - 向量存儲：Qdrant (cosine distance)
+- **重要 API 端點**:
+  - `POST /rag/documents/upload` - 文檔上傳（支援文件）
+  - `POST /rag/documents/text` - 文檔創建（純文本）
+  - `GET /rag/documents` - 列出文檔（支援篩選）
+  - `GET /rag/documents/{id}` - 獲取文檔詳情
+  - `PUT /rag/documents/{id}` - 更新文檔
+  - `DELETE /rag/documents/{id}` - 刪除文檔及向量
+  - `POST /rag/search` - 語義搜索
+  - `GET /rag/stats` - RAG 系統統計
   - `search_knowledge_base` - 知識庫搜索
   - `web_search` - 網頁搜索（模擬）
   - `send_email` - 郵件發送
@@ -147,7 +174,26 @@ model_list:
 
 ## 🔄 最近重大變更（2025-10）
 
-### 1. 網頁搜索功能 ✅
+### 1. 企業級 RAG 系統 ✅ 🆕
+- **新功能**:
+  - 創建 `rag_service.py` - 核心 RAG 服務類
+  - 文檔上傳與處理（PDF、DOCX、TXT）
+  - 自動向量化使用 sentence-transformers
+  - 語義搜索集成 Qdrant
+  - 完整文檔管理 CRUD API
+  - 8 個新的 RAG API 端點
+- **技術棧**:
+  - sentence-transformers 2.6.1（all-MiniLM-L6-v2 模型）
+  - PyPDF2 3.0.1（PDF 處理）
+  - python-docx 1.1.0（DOCX 處理）
+  - openpyxl 3.1.2（Excel 處理）
+- **測試**:
+  - `tests/test_rag.py` - 完整 RAG 功能測試
+- **依賴更新**:
+  - `services/mcp-server/requirements.txt` - 添加 RAG 依賴
+  - Docker 構建時間增加（需下載大型模型）
+
+### 2. 網頁搜索功能 ✅
 - **Commit**: `0c321a9`
 - **變更**:
   - 修改 `detect_tool_intent()` 支援 web_search
@@ -155,7 +201,7 @@ model_list:
   - 添加 web_search 結果格式化
   - 測試腳本：`tests/test_web_search.py`
 
-### 2. UI 間距優化 ✅
+### 3. UI 間距優化 ✅
 - **Commits**: `1c0e65e`, `2d3141b`, `1b735cd`, `d20b593`, `745b0af`
 - **變更**:
   - 主內容區域：padding-top 2rem
@@ -163,19 +209,20 @@ model_list:
   - 減少所有元素間距（headers, dividers, alerts）
   - 修正 Logo 容器負邊距問題
 
-### 3. 台灣政府模型更新 ✅
+### 4. 台灣政府模型更新 ✅
 - **變更**:
   - 從 9 個增加到 10 個模型
   - 移除：llama32-ffm-11b-v-32k
   - 新增：phi4, magistral, gemma-3, llama4, gpt-oss
 
-### 4. Pandas 版本修正 ✅
+### 5. Pandas 版本修正 ✅
 - **問題**: `pandas==2.0.3` 與 Python 3.11 不兼容
 - **解決**: 改為 `pandas>=2.0.0`
 
 ## 🧪 測試
 
 ### 測試文件位置
+- `tests/test_rag.py` - 🆕 企業 RAG 功能測試（上傳、搜索、CRUD）
 - `tests/test_all_models_search.py` - 多模型知識庫搜索測試
 - `tests/test_web_search.py` - 網頁搜索功能測試
 - `tests/test_knowledge_base_search.py` - 知識庫搜索檢測測試
@@ -183,6 +230,10 @@ model_list:
 
 ### 運行測試
 ```bash
+# RAG 系統測試
+python3 tests/test_rag.py
+
+# 搜索功能測試
 python3 tests/test_web_search.py
 python3 tests/test_all_models_search.py
 ```
@@ -210,18 +261,40 @@ POSTGRES_DB=ai_platform
 
 ## 🚀 常見開發任務
 
-### 1. 添加新模型
+### 1. 使用 RAG 系統 🆕
+```bash
+# 上傳文檔（文件）
+curl -X POST http://localhost:8001/rag/documents/upload \
+  -F "file=@document.pdf" \
+  -F "category=技術文檔" \
+  -F "tags=AI,機器學習"
+
+# 創建文檔（文本）
+curl -X POST http://localhost:8001/rag/documents/text \
+  -H "Content-Type: application/json" \
+  -d '{"title":"測試文檔","content":"內容...","category":"測試"}'
+
+# 語義搜索
+curl -X POST http://localhost:8001/rag/search \
+  -H "Content-Type: application/json" \
+  -d '{"query":"機器學習","top_k":5,"similarity_threshold":0.5}'
+
+# 獲取 RAG 統計
+curl http://localhost:8001/rag/stats
+```
+
+### 2. 添加新模型
 1. 編輯 `config/litellm-config.yaml`
 2. 添加 model_list 條目（model_name, display_name, litellm_params）
 3. 如需 fallback 模式，更新 `services/agent-service/main.py` 的 `model_name_map`
 4. 重啟服務：`docker-compose build agent-service && docker-compose up -d`
 
-### 2. 修改 UI 樣式
+### 3. 修改 UI 樣式
 1. 編輯 `services/web-ui/app.py` 的 CSS 區塊（約第 146 行）
 2. 重建 Web UI：`docker-compose build web-ui && docker-compose up -d web-ui`
 3. 瀏覽器硬刷新（Cmd+Shift+R）
 
-### 3. 添加新工具
+### 4. 添加新工具
 1. 在 `services/mcp-server/main.py` 添加:
    - Pydantic Request Model
    - `/tools/{tool_name}` endpoint
@@ -231,7 +304,7 @@ POSTGRES_DB=ai_platform
    - 結果格式化邏輯
 3. 重建兩個服務
 
-### 4. 調試流程
+### 5. 調試流程
 ```bash
 # 查看服務日誌
 docker-compose logs -f agent-service
@@ -244,6 +317,7 @@ docker exec -it ai-mcp-server bash
 
 # 重啟單一服務
 docker-compose restart agent-service
+docker-compose restart mcp-server
 ```
 
 ## 📊 數據庫架構
@@ -253,10 +327,24 @@ docker-compose restart agent-service
 - **用戶表**: 用戶資訊（如啟用認證）
 - **對話歷史**: 對話記錄
 
-### Qdrant（向量數據庫）
+### Qdrant（向量數據庫）🆕
 - **Collection**: documents
-- **向量維度**: 依嵌入模型而定
-- **用途**: 語義搜索
+- **向量維度**: 384（all-MiniLM-L6-v2）
+- **距離度量**: Cosine similarity
+- **用途**:
+  - 語義搜索
+  - 文檔相似度計算
+  - RAG 檢索增強
+- **數據結構**:
+  - `id`: 唯一標識符（doc_id_chunk_id）
+  - `vector`: 384維嵌入向量
+  - `payload`:
+    - `doc_id`: 文檔 ID
+    - `chunk_id`: 分塊 ID
+    - `title`: 文檔標題
+    - `content`: 分塊內容
+    - `metadata`: 自定義元數據
+    - `created_at`: 創建時間
 
 ### Redis
 - **TTL**: 300 秒（搜索緩存）
@@ -310,6 +398,10 @@ docker-compose restart agent-service
 
 ---
 
-**最後更新**: 2025-10-24
-**版本**: 1.0
+**最後更新**: 2025-10-25
+**版本**: 2.0 (Enterprise RAG)
 **維護者**: AI Platform Team
+
+**版本歷史**:
+- v2.0 (2025-10-25): 添加企業級 RAG 系統
+- v1.0 (2025-10-24): 初始版本
