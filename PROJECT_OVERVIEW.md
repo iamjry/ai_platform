@@ -71,6 +71,10 @@
 - CSS 優化：頂部空白 2rem（主內容）/ 0.3rem（sidebar）
 - 使用 `st.markdown()` 代替 `st.header()` 以更好控制間距
 - 從 litellm-config.yaml 動態載入模型列表
+- **模型可見性控制**: 支援透過 `visible` 欄位控制模型是否顯示在選擇列表中
+  - 在模型配置介面可編輯可見性狀態（checkbox）
+  - 隱藏的模型不會出現在下拉選單中，但仍可在後台管理
+  - 預設所有模型為可見（`visible: true`）
 
 ### 2. Agent Service (`services/agent-service/`)
 - **技術**: FastAPI
