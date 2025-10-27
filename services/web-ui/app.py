@@ -23,6 +23,7 @@ st.set_page_config(
 
 AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "http://agent-service:8000")
 LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:4000")
+MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
 
 # Model context limits (conservative estimates to account for system prompt and tools)
 MODEL_CONTEXT_LIMITS = {
@@ -284,6 +285,11 @@ with st.sidebar:
                 model_options = {}
                 if "model_list" in config:
                     for model in config["model_list"]:
+                        # Only include models where visible is True (default to True if not specified)
+                        is_visible = model.get("visible", True)
+                        if not is_visible:
+                            continue
+
                         model_name = model.get("model_name", "")
                         display_name = model.get("display_name", model_name)
                         if model_name and display_name:
@@ -453,12 +459,13 @@ with st.sidebar:
             st.info(get_text("no_chat_history", lang))
 
 # Main Content
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
     get_text("tab_chat", lang),
     get_text("tab_agent", lang),
     get_text("tab_agents_catalog", lang),
     get_text("tab_models_config", lang),
     get_text("tab_monitor", lang),
+    get_text("tab_rag", lang),
     "📚 Documentation",
     get_text("tab_about", lang)
 ])
@@ -481,7 +488,7 @@ with tab1:
 
     # File upload and web search options (Claude.ai style)
     with st.expander("📎 Attachments & Options", expanded=False):
-        col1, col2 = st.columns([3, 1])
+        col1, col2, col3 = st.columns([2, 1, 1])
 
         with col1:
             uploaded_files = st.file_uploader(
@@ -497,6 +504,41 @@ with tab1:
                 value=False,
                 help="Enable web search for real-time information"
             )
+
+        with col3:
+            rag_search_enabled = st.checkbox(
+                "📚 RAG Knowledge",
+                value=False,
+                help="Search knowledge base for relevant context"
+            )
+
+        # Document selection for RAG
+        if rag_search_enabled:
+            st.write("**Select documents to search:**")
+            try:
+                response = requests.get(f"{MCP_SERVER_URL}/rag/documents?limit=100", timeout=5)
+                if response.status_code == 200:
+                    docs_data = response.json()
+                    documents = docs_data.get('documents', [])
+
+                    if documents:
+                        doc_options = {f"{doc['id']} - {doc['title']}": doc['id'] for doc in documents}
+                        selected_docs = st.multiselect(
+                            "Choose specific documents (optional - leave empty to search all)",
+                            options=list(doc_options.keys()),
+                            default=[],
+                            key="rag_doc_selection"
+                        )
+                        # Store selected doc IDs in session state
+                        if "selected_doc_ids" not in st.session_state:
+                            st.session_state.selected_doc_ids = []
+                        st.session_state.selected_doc_ids = [doc_options[doc] for doc in selected_docs]
+                    else:
+                        st.info("No documents available. Upload documents in the Knowledge Base tab.")
+                else:
+                    st.warning("Could not load documents list")
+            except Exception as e:
+                st.warning(f"Error loading documents: {str(e)}")
 
         # Display uploaded files
         if uploaded_files:
@@ -664,6 +706,41 @@ with tab1:
                 st.error(error_msg)
                 st.stop()  # Prevent submission
 
+        # RAG Knowledge Search
+        rag_context = ""
+        if rag_search_enabled:
+            try:
+                # Get selected doc IDs if any
+                selected_doc_ids = st.session_state.get("selected_doc_ids", [])
+
+                search_payload = {
+                    "query": prompt,
+                    "top_k": 3,
+                    "similarity_threshold": 0.5
+                }
+
+                # Add doc_ids filter if specific documents are selected
+                if selected_doc_ids:
+                    search_payload["doc_ids"] = selected_doc_ids
+
+                rag_response = requests.post(
+                    f"{MCP_SERVER_URL}/rag/search",
+                    json=search_payload,
+                    timeout=10
+                )
+
+                if rag_response.status_code == 200:
+                    rag_results = rag_response.json()
+                    if rag_results.get('count', 0) > 0:
+                        rag_context = "\n\n**[RAG Knowledge Context]**\n"
+                        for result in rag_results['results']:
+                            rag_context += f"\n- {result['title']} (similarity: {result['score']:.2f})\n"
+                            rag_context += f"  {result['content'][:200]}...\n"
+
+                        enhanced_prompt = f"{rag_context}\n\n**[User Question]**\n{enhanced_prompt}"
+            except Exception as e:
+                st.warning(f"RAG search failed: {str(e)}")
+
         if web_search_enabled:
             enhanced_prompt = f"[WEB_SEARCH_ENABLED] {enhanced_prompt}"
 
@@ -680,6 +757,9 @@ with tab1:
                 with st.expander("📎 Attachments"):
                     for file_info in file_info_list:
                         st.caption(f"📄 {file_info['name']}")
+            if rag_context:
+                with st.expander("📚 RAG Knowledge Context"):
+                    st.markdown(rag_context)
 
         # Generate response
         with st.chat_message("assistant"):
@@ -1387,6 +1467,11 @@ with tab4:
                         placeholder="os.environ/OPENAI_API_KEY or actual key",
                         type="password"
                     )
+                    new_visible = st.checkbox(
+                        get_text("visible_in_selection", lang),
+                        value=True,
+                        help=get_text("visible_help", lang)
+                    )
 
                 col_submit, col_cancel = st.columns([1, 5])
                 with col_submit:
@@ -1398,6 +1483,7 @@ with tab4:
                     # Create new model entry
                     new_model = {
                         "model_name": new_model_name,
+                        "visible": new_visible,
                         "litellm_params": {
                             "model": new_model_id
                         }
@@ -1490,6 +1576,12 @@ with tab4:
                                     type="password",
                                     key=f"edit_key_{idx}"
                                 )
+                                edit_visible = st.checkbox(
+                                    get_text("visible_in_selection", lang),
+                                    value=model.get("visible", True),
+                                    key=f"edit_visible_{idx}",
+                                    help=get_text("visible_help", lang)
+                                )
 
                             col_save, col_cancel, col_delete = st.columns([1, 1, 4])
                             with col_save:
@@ -1502,6 +1594,7 @@ with tab4:
                             if save_clicked:
                                 # Update model
                                 litellm_config["model_list"][idx]["model_name"] = edit_model_name
+                                litellm_config["model_list"][idx]["visible"] = edit_visible
                                 if edit_display_name:
                                     litellm_config["model_list"][idx]["display_name"] = edit_display_name
                                 litellm_config["model_list"][idx]["litellm_params"]["model"] = edit_model_id
@@ -1536,6 +1629,11 @@ with tab4:
                         with col1:
                             st.markdown(f"**{get_text('model_name', lang)}:** `{model_name}`")
                             st.markdown(f"**{get_text('model_id', lang)}:** `{model_id}`")
+                            # Show visibility status
+                            is_visible = model.get("visible", True)
+                            visibility_icon = "✅" if is_visible else "❌"
+                            visibility_text = get_text("visible", lang) if is_visible else get_text("hidden", lang)
+                            st.markdown(f"**{get_text('visibility', lang)}:** {visibility_icon} {visibility_text}")
                         with col2:
                             st.markdown(f"**{get_text('provider', lang)}:** {provider}")
                             if api_base:
@@ -1611,6 +1709,212 @@ with tab5:
     st.info(get_text("monitor_tip", lang))
 
 with tab6:
+    st.header(get_text("rag_header", lang))
+    st.caption(get_text("rag_caption", lang))
+
+    # Create columns for layout
+    col1, col2 = st.columns([1, 1])
+
+    with col1:
+        # Document Upload Section
+        st.subheader(get_text("rag_upload_section", lang))
+
+        uploaded_file = st.file_uploader(
+            get_text("rag_upload_file", lang),
+            type=['pdf', 'docx', 'txt'],
+            help=get_text("rag_upload_help", lang)
+        )
+
+        doc_title = st.text_input(get_text("rag_doc_title", lang))
+        doc_category = st.text_input(get_text("rag_doc_category", lang), value="General")
+        doc_tags = st.text_input(get_text("rag_doc_tags", lang), placeholder="AI, Documentation, Enterprise")
+
+        if st.button(get_text("rag_upload_button", lang)):
+            if uploaded_file and doc_title:
+                with st.spinner(get_text("rag_uploading", lang)):
+                    try:
+                        # Prepare file upload
+                        files = {"file": (uploaded_file.name, uploaded_file.getvalue(), uploaded_file.type)}
+                        data = {
+                            "title": doc_title,
+                            "category": doc_category,
+                            "tags": doc_tags
+                        }
+
+                        # Upload to MCP server
+                        response = requests.post(
+                            f"{MCP_SERVER_URL}/rag/documents/upload",
+                            files=files,
+                            data=data,
+                            timeout=30
+                        )
+
+                        if response.status_code == 200:
+                            result = response.json()
+                            st.success(get_text("rag_upload_success", lang).format(
+                                doc_id=result.get('doc_id'),
+                                chunks=result.get('chunks_count')
+                            ))
+                        else:
+                            st.error(f"{get_text('rag_upload_error', lang)}: {response.text}")
+                    except Exception as e:
+                        st.error(f"{get_text('rag_upload_error', lang)}: {str(e)}")
+            else:
+                st.warning("Please provide both file and title!")
+
+        st.divider()
+
+        # Manual Text Input Section (for scanned PDFs or direct input)
+        st.subheader("📝 " + ("直接輸入文本" if lang == "zh-TW" else "Direct Text Input"))
+        st.caption("Alternative: Create document from text (useful for scanned PDFs)")
+
+        with st.expander("Create document from text"):
+            text_doc_title = st.text_input("Document Title", key="text_title")
+            text_doc_content = st.text_area("Content", height=200, key="text_content",
+                                           placeholder="Paste or type your document content here...")
+            text_doc_category = st.text_input("Category", value="General", key="text_category")
+            text_doc_tags = st.text_input("Tags (comma-separated)", key="text_tags")
+
+            if st.button("Create from Text", key="create_text_doc"):
+                if text_doc_title and text_doc_content:
+                    with st.spinner("Creating document..."):
+                        try:
+                            response = requests.post(
+                                f"{MCP_SERVER_URL}/rag/documents/text",
+                                json={
+                                    "title": text_doc_title,
+                                    "content": text_doc_content,
+                                    "category": text_doc_category,
+                                    "tags": [t.strip() for t in text_doc_tags.split(",")] if text_doc_tags else []
+                                },
+                                timeout=30
+                            )
+
+                            if response.status_code == 200:
+                                result = response.json()
+                                st.success(f"✅ Document created! ID: {result.get('doc_id')}, Chunks: {result.get('chunks_count')}")
+                            else:
+                                st.error(f"❌ Error: {response.text}")
+                        except Exception as e:
+                            st.error(f"❌ Error: {str(e)}")
+                else:
+                    st.warning("Please provide both title and content!")
+
+        st.divider()
+
+        # Semantic Search Section
+        st.subheader(get_text("rag_search_section", lang))
+
+        search_query = st.text_input(
+            get_text("rag_search_query", lang),
+            placeholder=get_text("rag_search_placeholder", lang)
+        )
+
+        col_search1, col_search2 = st.columns(2)
+        with col_search1:
+            top_k = st.slider(get_text("rag_search_topk", lang), 1, 10, 5)
+        with col_search2:
+            threshold = st.slider(get_text("rag_search_threshold", lang), 0.0, 1.0, 0.5, 0.05)
+
+        if st.button(get_text("rag_search_button", lang)):
+            if search_query:
+                with st.spinner(get_text("rag_searching", lang)):
+                    try:
+                        response = requests.post(
+                            f"{MCP_SERVER_URL}/rag/search",
+                            json={
+                                "query": search_query,
+                                "top_k": top_k,
+                                "similarity_threshold": threshold
+                            },
+                            timeout=15
+                        )
+
+                        if response.status_code == 200:
+                            results = response.json()
+
+                            st.subheader(get_text("rag_search_results", lang))
+
+                            if results.get('count', 0) > 0:
+                                for i, result in enumerate(results['results'], 1):
+                                    with st.expander(f"{i}. {result['title']} - {get_text('rag_result_score', lang)}: {result['score']:.3f}"):
+                                        st.write(f"**{get_text('rag_doc_id', lang)}:** {result['doc_id']}")
+                                        st.write(f"**{get_text('rag_result_content', lang)}:**")
+                                        st.write(result['content'])
+                            else:
+                                st.info(get_text("rag_no_results", lang))
+                        else:
+                            st.error(f"Search failed: {response.text}")
+                    except Exception as e:
+                        st.error(f"Search error: {str(e)}")
+
+    with col2:
+        # Document List Section
+        st.subheader(get_text("rag_docs_section", lang))
+
+        try:
+            response = requests.get(f"{MCP_SERVER_URL}/rag/documents?limit=10", timeout=5)
+
+            if response.status_code == 200:
+                docs_data = response.json()
+                total = docs_data.get('total', 0)
+                st.caption(get_text("rag_docs_total", lang).format(total=total))
+
+                for doc in docs_data.get('documents', []):
+                    with st.expander(f"📄 {doc['title']}"):
+                        st.write(f"**{get_text('rag_doc_id', lang)}:** {doc['id']}")
+                        st.write(f"**{get_text('rag_doc_category', lang)}:** {doc.get('category', 'N/A')}")
+                        st.write(f"**{get_text('rag_doc_created', lang)}:** {doc.get('created_at', 'N/A')}")
+
+                        if st.button(f"🗑️ {get_text('rag_doc_delete', lang)}", key=f"delete_{doc['id']}"):
+                            try:
+                                del_response = requests.delete(
+                                    f"{MCP_SERVER_URL}/rag/documents/{doc['id']}",
+                                    timeout=5
+                                )
+                                if del_response.status_code == 200:
+                                    st.success("Document deleted!")
+                                    st.rerun()
+                                else:
+                                    st.error(f"Delete failed: {del_response.text}")
+                            except Exception as e:
+                                st.error(f"Delete error: {str(e)}")
+            else:
+                st.error(f"Failed to load documents: {response.text}")
+        except Exception as e:
+            st.error(f"Error loading documents: {str(e)}")
+
+        st.divider()
+
+        # Stats Section
+        st.subheader(get_text("rag_stats_section", lang))
+
+        try:
+            with st.spinner(get_text("rag_stats_loading", lang)):
+                response = requests.get(f"{MCP_SERVER_URL}/rag/stats", timeout=5)
+
+                if response.status_code == 200:
+                    stats = response.json()
+
+                    col_stat1, col_stat2 = st.columns(2)
+                    with col_stat1:
+                        st.metric(
+                            get_text("rag_stats_total_docs", lang),
+                            stats.get('documents', {}).get('total', 0)
+                        )
+                    with col_stat2:
+                        st.metric(
+                            get_text("rag_stats_total_vectors", lang),
+                            stats.get('vectors', {}).get('points_count', 0)
+                        )
+
+                    st.caption(f"{get_text('rag_stats_collection', lang)}: {stats.get('vectors', {}).get('collection_name', 'N/A')}")
+                else:
+                    st.error(f"Failed to load stats: {response.text}")
+        except Exception as e:
+            st.error(f"Error loading stats: {str(e)}")
+
+with tab7:
     st.header("📚 Project Documentation")
     st.caption("Complete documentation for the AI Platform")
 
