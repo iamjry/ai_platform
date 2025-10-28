@@ -205,6 +205,43 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
     has_email_keyword = any(keyword in task_lower for keyword in email_keywords)
     has_context_indicator = any(indicator in task_lower for indicator in context_indicators)
 
+    # LINE messaging patterns - check BEFORE email
+    line_keywords = [
+        "line", "傳訊息", "传讯息", "發line", "发line", "传line", "傳line",
+        "line訊息", "line讯息", "line消息", "line群組", "line群组", "line group",
+        "傳line訊息", "发line讯息", "通知.*line", "發送.*line", "发送.*line"
+    ]
+
+    has_line_keyword = any(keyword in task_lower for keyword in line_keywords)
+
+    if has_line_keyword:
+        # Extract the message content
+        message = task
+
+        # Try to extract message after common patterns
+        content_patterns = [
+            r'(?:說|说|通知|告知|傳|传|發|发|内容|內容)[：:，,]?\s*(.+)',
+            r'line[：:，,]?\s*(.+)',
+            r'訊息[：:，,]?\s*(.+)',
+            r'讯息[：:，,]?\s*(.+)'
+        ]
+
+        for pattern in content_patterns:
+            match = re.search(pattern, task, re.IGNORECASE)
+            if match:
+                extracted = match.group(1).strip()
+                # Remove trailing punctuation and common endings
+                extracted = re.sub(r'[，,。！!？?]+$', '', extracted)
+                if len(extracted) > 3:  # Make sure we got meaningful content
+                    message = extracted
+                    break
+
+        return ("send_notification", {
+            "message": message,
+            "channel": "line",
+            "recipients": []
+        })
+
     # Trigger email if: explicit keyword OR (email address + context indicator)
     if has_email_keyword or (emails and has_context_indicator):
         if emails:
