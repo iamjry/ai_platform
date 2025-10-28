@@ -1,10 +1,10 @@
 # AI Platform - Project Summary
 
-**Version:** 2.3.0
+**Version:** 2.2.0
 **Status:** ✅ Production Ready
 **Last Updated:** 2025-10-28
 **Test Coverage:** 100% (29/29 tests passing)
-**New Features:** WeChat Work Integration, LINE Messaging with Smart Recipient Detection, Multi-Stage Conversations
+**New Features:** LINE Messaging with Smart Recipient Detection, Multi-Stage Conversations
 
 ---
 
@@ -12,27 +12,7 @@
 
 The AI Platform is a comprehensive, enterprise-grade AI agent system featuring 28 intelligent tools, **multi-stage conversational interactions**, multi-model LLM support, full-text search capabilities, and comprehensive monitoring. Built with a microservices architecture using Docker Compose, FastAPI, and modern AI technologies.
 
-### 🆕 What's New in v2.3.0
-
-#### WeChat Work (企業微信) Integration (NEW!)
-- 💬 **Enterprise Communication**: Send messages to WeChat Work groups via webhook robots
-- 🚀 **Simple Setup**: No complex OAuth - just add webhook URL
-- 🎯 **Automatic Detection**: AI detects WeChat keywords ("微信", "企業微信", "企微", "wechat")
-- 🔄 **Multi-Model Support**: Works with Claude/GPT and Qwen models
-- ✅ **Seamless Integration**: No need to ask for webhook URLs or configuration
-
-**Example:**
-```
-User: "發微信通知大家會議改期"
-Agent: ✅ 微信訊息已成功發送！
-      發送對象: 企業微信群組
-      訊息內容: 會議改期
-
-User: "用企業微信告訴團隊專案進度更新了"
-Agent: ✅ 微信訊息已成功發送！
-      發送對象: 企業微信群組
-      訊息內容: 專案進度更新了
-```
+### 🆕 What's New in v2.2.0
 
 #### LINE Messaging with Smart Recipient Detection
 - 📱 **Intelligent Recipient Detection**: Automatically determines whether to send to group or individual based on context
@@ -107,7 +87,7 @@ Agent: "✅ Email sent successfully!"
 
 #### 5. Business Process (3 tools)
 - ✅ `create_task` - Task creation and management
-- ✅ `send_notification` - Multi-channel notifications (Email, LINE, WeChat Work with auto-detection)
+- ✅ `send_notification` - Multi-channel notifications (Email, LINE with auto-detection)
 - ✅ `schedule_meeting` - Meeting scheduling
 
 #### 6. System Integration (3 tools)
