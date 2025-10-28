@@ -499,9 +499,23 @@ async def execute_agent(request: AgentRequest):
 5. 一次只詢問缺少的信息，不要問不必要的問題
 6. 收集到所有必需信息後，立即執行操作
 
+📱 **LINE 訊息發送**：
+- 當用戶要求發送 LINE 訊息、通知、傳訊息到 Line 群組等，使用 send_notification 工具
+- **重要**：LINE 已配置預設收件人，不需要詢問收件人資訊
+- 參數設定：
+  * message: 用戶想發送的訊息內容
+  * channel: 固定使用 "line"
+  * recipients: 留空 [] 即可（系統會自動使用預設收件人/群組）
+- 示例：
+  * "傳訊息到 Line" → 直接使用 send_notification(message="...", channel="line", recipients=[])
+  * "通知大家..." → 直接使用 send_notification(message="...", channel="line", recipients=[])
+  * "發 Line 給群組" → 直接使用 send_notification(message="...", channel="line", recipients=[])
+- **不要**詢問 LINE token、收件人ID 或其他技術細節，系統已自動配置
+
 示例：
 - 用戶說"send email"但沒有提供收件人 → 詢問收件人email地址
 - 用戶說"send email to john@example.com"但沒有主旨和內容 → 詢問郵件主旨和內容
+- 用戶說"傳訊息到 Line 群組：今晚會下雨" → 直接調用 send_notification，不要詢問任何額外信息
 - 用戶提供了所有信息 → 直接執行發送郵件""",
 
             "research": """你是一個專業的研究助手，擅長信息收集、分析和整理。
