@@ -114,9 +114,9 @@ class CreateTaskRequest(BaseModel):
     due_date: Optional[datetime] = None
 
 class SendNotificationRequest(BaseModel):
-    recipients: List[str]
+    recipients: List[str] = []  # Optional - will use default if empty
     message: str
-    channel: str = "email"  # "email", "slack", "teams"
+    channel: str = "line"  # "email", "slack", "teams", "line"
     priority: str = "normal"
 
 class ScheduleMeetingRequest(BaseModel):
@@ -358,9 +358,14 @@ async def list_tools():
             },
             {
                 "name": "send_notification",
-                "description": "發送通知",
+                "description": "發送通知到 Line/Email/Slack (支援預設收件人)",
                 "category": "communication",
-                "parameters": {"recipients": "array", "message": "string", "channel": "string", "priority": "string"}
+                "parameters": {
+                    "recipients": "array (optional - 留空使用預設收件人)",
+                    "message": "string",
+                    "channel": "string (line/email/slack)",
+                    "priority": "string"
+                }
             },
             {
                 "name": "schedule_meeting",
@@ -852,18 +857,96 @@ async def create_task(request: CreateTaskRequest):
 
 @app.post("/tools/send_notification")
 async def send_notification(request: SendNotificationRequest):
-    """發送通知"""
+    """發送通知 - 支援 Line, Email, Slack 等多種通道"""
     try:
         notification_id = f"NOTIF-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
-        return {
-            "notification_id": notification_id,
-            "recipients": request.recipients,
-            "channel": request.channel,
-            "priority": request.priority,
-            "status": "sent",
-            "sent_at": datetime.now().isoformat()
-        }
+        # Handle Line messaging
+        if request.channel.lower() == "line":
+            line_token = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+            if not line_token:
+                raise HTTPException(status_code=500, detail="LINE_CHANNEL_ACCESS_TOKEN not configured")
+
+            # Use default recipient if none provided
+            recipients = request.recipients
+            if not recipients:
+                default_recipient = os.getenv("LINE_DEFAULT_RECIPIENT_ID", "").strip()
+                if default_recipient:
+                    recipients = [default_recipient]
+                    logger.info(f"Using default LINE recipient: {default_recipient}")
+                else:
+                    raise HTTPException(status_code=400, detail="No recipients provided and LINE_DEFAULT_RECIPIENT_ID not set")
+
+            # Send to each recipient
+            results = []
+            async with httpx.AsyncClient() as client:
+                for recipient_id in recipients:
+                    try:
+                        # Determine if it's a user or group message
+                        endpoint = "https://api.line.me/v2/bot/message/push"
+
+                        headers = {
+                            "Content-Type": "application/json",
+                            "Authorization": f"Bearer {line_token}"
+                        }
+
+                        payload = {
+                            "to": recipient_id,
+                            "messages": [
+                                {
+                                    "type": "text",
+                                    "text": request.message
+                                }
+                            ]
+                        }
+
+                        response = await client.post(endpoint, json=payload, headers=headers)
+
+                        if response.status_code == 200:
+                            logger.info(f"✅ LINE message sent successfully to {recipient_id}")
+                            results.append({
+                                "recipient": recipient_id,
+                                "status": "sent",
+                                "status_code": response.status_code
+                            })
+                        else:
+                            logger.error(f"❌ LINE API error for {recipient_id}: {response.status_code} - {response.text}")
+                            results.append({
+                                "recipient": recipient_id,
+                                "status": "failed",
+                                "status_code": response.status_code,
+                                "error": response.text
+                            })
+
+                    except Exception as send_error:
+                        logger.error(f"Error sending to {recipient_id}: {send_error}")
+                        results.append({
+                            "recipient": recipient_id,
+                            "status": "failed",
+                            "error": str(send_error)
+                        })
+
+            return {
+                "notification_id": notification_id,
+                "channel": "line",
+                "recipients": recipients,
+                "results": results,
+                "priority": request.priority,
+                "sent_at": datetime.now().isoformat()
+            }
+
+        # Other channels (email, slack, teams) - stub for now
+        else:
+            return {
+                "notification_id": notification_id,
+                "recipients": request.recipients,
+                "channel": request.channel,
+                "priority": request.priority,
+                "status": "sent",
+                "sent_at": datetime.now().isoformat(),
+                "note": f"Channel '{request.channel}' not yet fully implemented"
+            }
+
     except Exception as e:
         logger.error(f"Send notification error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
