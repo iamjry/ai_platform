@@ -214,6 +214,7 @@ services:
       - ./TROUBLESHOOTING_GUIDE.md:/app/TROUBLESHOOTING_GUIDE.md:ro
       - ./CONTEXT_AWARE_AGENT_GUIDE.md:/app/CONTEXT_AWARE_AGENT_GUIDE.md:ro
       - ./SMTP_CONFIGURATION_GUIDE.md:/app/SMTP_CONFIGURATION_GUIDE.md:ro
+      - ./LINE_SETUP_GUIDE.md:/app/LINE_SETUP_GUIDE.md:ro
     networks:
       - ai-platform
     depends_on:

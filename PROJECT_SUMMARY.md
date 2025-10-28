@@ -1,10 +1,10 @@
 # AI Platform - Project Summary
 
-**Version:** 2.1.0
+**Version:** 2.2.0
 **Status:** ✅ Production Ready
-**Last Updated:** 2025-10-17
+**Last Updated:** 2025-10-28
 **Test Coverage:** 100% (29/29 tests passing)
-**New Features:** Multi-Stage Conversations, Multi-Platform Deployment
+**New Features:** LINE Messaging with Smart Recipient Detection, Multi-Stage Conversations, Multi-Platform Deployment
 
 ---
 
@@ -12,7 +12,30 @@
 
 The AI Platform is a comprehensive, enterprise-grade AI agent system featuring 28 intelligent tools, **multi-stage conversational interactions**, multi-model LLM support, full-text search capabilities, and comprehensive monitoring. Built with a microservices architecture using Docker Compose, FastAPI, and modern AI technologies.
 
-### 🆕 What's New in v2.1.0
+### 🆕 What's New in v2.2.0
+
+#### LINE Messaging with Smart Recipient Detection (NEW!)
+- 📱 **Intelligent Recipient Detection**: Automatically determines whether to send to group or individual based on context
+- 🎯 **Context-Aware Routing**:
+  - Group keywords ("群組", "大家", "團隊") → Send to default group
+  - Personal keywords ("我", "提醒我", "自己") → Send to personal LINE
+  - Specific mentions → Ask for LINE ID
+- 🔄 **Multi-Model Support**: Works with both Claude/GPT (function calling) and Qwen (pattern matching)
+- 🧹 **Clean Message Extraction**: Removes recipient keywords from message content (e.g., "群組 下雨了" → "下雨了")
+- ✅ **Seamless Integration**: No need to ask user for LINE tokens or recipient IDs
+
+**Example:**
+```
+User: "通知大家今晚會下雨"
+Agent: ✅ LINE訊息已成功發送！
+      發送對象: 群組
+      訊息內容: 今晚會下雨
+
+User: "提醒我明天開會"
+Agent: ✅ LINE訊息已成功發送！
+      發送對象: 個人 (your-username)
+      訊息內容: 明天開會
+```
 
 #### Multi-Stage Conversation Capability
 - 🔄 **Intelligent Information Gathering**: Agent can ask follow-up questions to collect missing parameters
@@ -64,7 +87,7 @@ Agent: "✅ Email sent successfully!"
 
 #### 5. Business Process (3 tools)
 - ✅ `create_task` - Task creation and management
-- ✅ `send_notification` - Multi-channel notifications
+- ✅ `send_notification` - Multi-channel notifications (Email, LINE with smart recipient detection)
 - ✅ `schedule_meeting` - Meeting scheduling
 
 #### 6. System Integration (3 tools)

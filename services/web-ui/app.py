@@ -1925,6 +1925,7 @@ with tab7:
         "🔧 Troubleshooting Guide": "TROUBLESHOOTING_GUIDE.md",
         "🧠 Context-Aware Agent": "CONTEXT_AWARE_AGENT_GUIDE.md",
         "📧 SMTP Configuration": "SMTP_CONFIGURATION_GUIDE.md",
+        "📱 LINE Messaging Setup": "LINE_SETUP_GUIDE.md",
         "✅ Test Results": "TEST_RESULTS.md",
         "🚀 Deployment Guide": "DEPLOYMENT_GUIDE.md",
         "📝 Changelog": "CHANGELOG.md",
@@ -2004,6 +2005,7 @@ with tab7:
         - **Troubleshooting**: TROUBLESHOOTING_GUIDE.md - Complete problem-solving guide
         - **Context-Aware Agent**: CONTEXT_AWARE_AGENT_GUIDE.md - Natural language understanding
         - **Email Setup**: SMTP_CONFIGURATION_GUIDE.md - Configure real email sending
+        - **LINE Messaging**: LINE_SETUP_GUIDE.md - Smart group/personal messaging with auto-detection
         - **Database**: See DATABASE_SCHEMA.md for schema details
         - **Testing**: Check TEST_RESULTS.md for 100% test coverage
         - **Deployment**: Follow DEPLOYMENT_GUIDE.md for production setup

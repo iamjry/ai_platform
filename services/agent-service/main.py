@@ -97,18 +97,43 @@ def convert_tools_to_functions(mcp_tools: List[Dict]) -> List[Dict]:
             "float": "number",      # Map float to number for consistency
         }
 
-        for param_name, param_type in tool.get("parameters", {}).items():
-            # Convert invalid types to valid JSON Schema types
-            mapped_type = type_mapping.get(param_type, param_type)
-            properties[param_name] = {"type": mapped_type}
+        for param_name, param_info in tool.get("parameters", {}).items():
+            # Handle different parameter formats
+            if isinstance(param_info, dict):
+                # Already in proper format with type/description
+                properties[param_name] = param_info
+                if param_info.get("required", False):
+                    required.append(param_name)
+            else:
+                # Simple string format like "string", "array", "object", "integer"
+                param_type = param_info
 
-            # Add description for datetime fields
-            if param_type == "datetime":
-                properties[param_name]["description"] = "ISO 8601 datetime string"
+                # Extract base type and handle descriptions in parentheses
+                # e.g., "array (optional - 留空使用預設收件人)" -> "array"
+                base_type = param_type.split("(")[0].strip() if "(" in param_type else param_type
 
-            # Make certain parameters required
-            if param_name in ["query", "to", "subject", "body", "title", "message"]:
-                required.append(param_name)
+                # Convert invalid types to valid JSON Schema types
+                mapped_type = type_mapping.get(base_type, base_type)
+                properties[param_name] = {"type": mapped_type}
+
+                # Add items for array type
+                if mapped_type == "array":
+                    properties[param_name]["items"] = {"type": "string"}
+
+                # Add description for datetime fields
+                if base_type == "datetime":
+                    properties[param_name]["description"] = "ISO 8601 datetime string"
+
+                # Extract description from parameter if it has one
+                if "(" in param_type:
+                    desc_match = param_type.split("(", 1)[1].rsplit(")", 1)[0]
+                    if desc_match:
+                        properties[param_name]["description"] = desc_match
+
+                # Make certain parameters required
+                # Note: recipients is optional for send_notification (has default)
+                if param_name in ["query", "to", "subject", "body", "title", "message"]:
+                    required.append(param_name)
 
         function_def = {
             "name": tool["name"],
@@ -215,6 +240,24 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
     has_line_keyword = any(keyword in task_lower for keyword in line_keywords)
 
     if has_line_keyword:
+        # Smart recipient detection based on context (do this FIRST)
+        recipients = []
+
+        # Personal keywords - send to individual (your-username)
+        personal_keywords = [
+            "我", "自己", "個人", "私訊", "私讯", "提醒我", "告訴我", "告诉我",
+            "your-username", "jerry", "我自己", "傳給我", "传给我", "發給我", "发给我"
+        ]
+
+        # Group keywords - send to default group (leave empty for default)
+        group_keywords = [
+            "群組", "群组", "大家", "團隊", "团队", "所有人", "全體", "全体",
+            "group", "everyone", "team", "all"
+        ]
+
+        has_personal = any(keyword in task_lower for keyword in personal_keywords)
+        has_group = any(keyword in task_lower for keyword in group_keywords)
+
         # Extract the message content
         message = task
 
@@ -236,10 +279,32 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
                     message = extracted
                     break
 
+        # Remove recipient-related keywords from the beginning of message
+        # e.g., "群組 今天會下雨" → "今天會下雨"
+        recipient_prefixes = [
+            r'^(?:群組|群组|大家|團隊|团队|所有人|全體|全体|group|everyone|team|all)[,，\s]+',
+            r'^(?:我|自己|個人|私訊|私讯)[,，\s]+',
+            r'^(?:your-username|jerry)[,，\s]+'
+        ]
+
+        for prefix_pattern in recipient_prefixes:
+            message = re.sub(prefix_pattern, '', message, flags=re.IGNORECASE).strip()
+
+        # Priority: personal > group (if both mentioned, assume personal reminder)
+        if has_personal:
+            # Send to your-username's personal LINE
+            recipients = ["Ud45d50ec4f060587d3a42c38e67a6008"]
+        elif has_group:
+            # Send to default group (leave empty to use LINE_DEFAULT_RECIPIENT_ID)
+            recipients = []
+        else:
+            # Default: if unclear, send to group
+            recipients = []
+
         return ("send_notification", {
             "message": message,
             "channel": "line",
-            "recipients": []
+            "recipients": recipients
         })
 
     # Trigger email if: explicit keyword OR (email address + context indicator)
@@ -448,6 +513,20 @@ async def execute_agent(request: AgentRequest):
                 # Format a nice response
                 if tool_name == "send_email":
                     result = f"✅ 郵件已成功發送！\n\n收件人: {', '.join(tool_args['to'])}\n主旨: {tool_args['subject']}\n郵件ID: {tool_result.get('email_id')}\n發送時間: {tool_result.get('sent_at')}"
+                elif tool_name == "send_notification" and tool_args.get("channel") == "line":
+                    # Determine recipient type
+                    recipients = tool_result.get('recipients', [])
+                    if recipients:
+                        if recipients[0].startswith('U'):
+                            recipient_type = "個人 (your-username)"
+                        elif recipients[0].startswith('C'):
+                            recipient_type = "群組"
+                        else:
+                            recipient_type = str(recipients)
+                    else:
+                        recipient_type = "預設群組"
+
+                    result = f"✅ LINE 訊息已成功發送！\n\n發送對象: {recipient_type}\n訊息內容: {tool_args.get('message', 'N/A')}\n通知ID: {tool_result.get('notification_id')}\n發送時間: {tool_result.get('sent_at')}"
                 elif tool_name == "create_task":
                     result = f"✅ 任務已創建！\n\n任務ID: {tool_result.get('id')}\n標題: {tool_args['title']}\n狀態: {tool_result.get('status')}"
                 elif tool_name == "web_search":
@@ -536,18 +615,37 @@ async def execute_agent(request: AgentRequest):
 5. 一次只詢問缺少的信息，不要問不必要的問題
 6. 收集到所有必需信息後，立即執行操作
 
-📱 **LINE 訊息發送**：
-- 當用戶要求發送 LINE 訊息、通知、傳訊息到 Line 群組等，使用 send_notification 工具
-- **重要**：LINE 已配置預設收件人，不需要詢問收件人資訊
-- 參數設定：
-  * message: 用戶想發送的訊息內容
-  * channel: 固定使用 "line"
-  * recipients: 留空 [] 即可（系統會自動使用預設收件人/群組）
-- 示例：
-  * "傳訊息到 Line" → 直接使用 send_notification(message="...", channel="line", recipients=[])
-  * "通知大家..." → 直接使用 send_notification(message="...", channel="line", recipients=[])
-  * "發 Line 給群組" → 直接使用 send_notification(message="...", channel="line", recipients=[])
-- **不要**詢問 LINE token、收件人ID 或其他技術細節，系統已自動配置
+📱 **LINE 訊息發送 - 智能判斷收件人**：
+使用 send_notification 工具時，根據語意判斷發送對象：
+
+**自動判斷規則**：
+1. **發送到群組**（使用預設群組 ID）：
+   - 語意包含「群組」、「大家」、「團隊」、「所有人」、「group」等群體關鍵字
+   - 示例：「通知大家」、「傳到群組」、「告訴團隊」
+   - 參數：recipients=[] （留空使用預設群組）
+
+2. **發送給個人**（使用預設個人 ID）：
+   - 語意包含「我」、「自己」、「個人」、「私訊」等個人關鍵字
+   - 或明確提到「your-username」、「Jerry」等個人名稱
+   - 示例：「提醒我」、「傳給我自己」、「私訊我」
+   - 參數：recipients=["Ud45d50ec4f060587d3a42c38e67a6008"]
+
+3. **特定群組**（需要詢問）：
+   - 提到特定群組名稱但不是預設群組（如「XX專案群組」、「YY部門群組」）
+   - 詢問：「請提供該群組的 LINE Group ID（以 C 開頭）」
+   - 參數：recipients=["用戶提供的Group ID"]
+
+4. **特定使用者**（需要詢問）：
+   - 提到特定人名但不是 your-username/Jerry
+   - 詢問：「請提供 {人名} 的 LINE User ID（以 U 開頭）」
+   - 參數：recipients=["用戶提供的User ID"]
+
+**參數設定**：
+- message: 用戶想發送的訊息內容
+- channel: 固定使用 "line"
+- recipients: 根據上述規則設定
+
+**不要**詢問 LINE token 或其他技術細節，系統已自動配置
 
 示例：
 - 用戶說"send email"但沒有提供收件人 → 詢問收件人email地址

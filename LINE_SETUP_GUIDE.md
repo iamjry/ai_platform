@@ -6,6 +6,7 @@ The AI Platform now supports sending messages to LINE users and groups through t
 ## Features
 - ✅ Send messages to LINE users
 - ✅ Send messages to LINE groups
+- ✅ **Smart recipient detection** - Automatically determines whether to send to group or individual based on context
 - ✅ Default recipient support (no need to specify recipient each time)
 - ✅ Multiple recipients support
 - ✅ Automatic fallback to default recipient
@@ -45,8 +46,15 @@ Update your `.env` file:
 ```bash
 # LINE Messaging API Configuration
 LINE_CHANNEL_ACCESS_TOKEN=your_channel_access_token_here
-LINE_DEFAULT_RECIPIENT_ID=Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # Your Line User ID or Group ID
+
+# Default: Send to Group (change to User ID for personal messages)
+LINE_DEFAULT_RECIPIENT_ID=Cxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # Default Group ID
+
+# Individual User ID (for personal messages when context mentions "me", "myself", etc.)
+LINE_USER_ID=Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # Your personal User ID
 ```
+
+**Note**: The system uses `LINE_DEFAULT_RECIPIENT_ID` (Group) by default. When the AI detects personal keywords like "me", "myself", "remind me", it will automatically use `LINE_USER_ID` instead.
 
 ### 4. Restart Services
 
@@ -56,7 +64,33 @@ docker-compose up -d mcp-server
 
 ## Usage
 
-### Send to Default Recipient
+### Smart Recipient Detection
+
+The AI automatically determines whether to send to a group or individual based on your message context:
+
+#### Send to Group (Default)
+Keywords: "群組", "大家", "團隊", "所有人", "group", "everyone", "team"
+
+Examples:
+- "通知大家今晚會下雨" → Sends to default group
+- "傳訊息到群組：會議改期" → Sends to default group
+- "告訴團隊專案完成了" → Sends to default group
+
+#### Send to Personal (your-username)
+Keywords: "我", "自己", "個人", "私訊", "提醒我", "your-username", "jerry"
+
+Examples:
+- "提醒我明天下午開會" → Sends to personal (your-username)
+- "傳給我自己" → Sends to personal (your-username)
+- "私訊我這個連結" → Sends to personal (your-username)
+
+#### Send to Specific Group/User
+If you mention a specific group or person name:
+- The AI will ask you to provide the LINE Group ID (starts with `C`) or User ID (starts with `U`)
+
+### API Usage
+
+#### Send to Default Recipient
 ```json
 {
   "message": "Hello from AI Platform!",
@@ -64,7 +98,7 @@ docker-compose up -d mcp-server
 }
 ```
 
-### Send to Specific Recipients
+#### Send to Specific Recipients
 ```json
 {
   "recipients": ["U1234567890abcdef", "C9876543210fedcba"],
@@ -72,11 +106,6 @@ docker-compose up -d mcp-server
   "channel": "line"
 }
 ```
-
-### Using from Agent/Chat
-Simply ask the AI:
-- "Send a LINE message saying 'Meeting starts in 10 minutes'"
-- "Notify the team on LINE about the deployment"
 
 ## Troubleshooting
 
@@ -99,6 +128,11 @@ Simply ask the AI:
 2. Check if the bot is in the group (for group messages)
 3. Verify the Channel Access Token is correct
 4. Check mcp-server logs: `docker logs ai-mcp-server --tail 50`
+
+### Wrong recipient (group vs personal)
+- If messages go to the wrong recipient, check your message context
+- Use explicit keywords: "群組" for group, "我" or "提醒我" for personal
+- Verify `LINE_DEFAULT_RECIPIENT_ID` and `LINE_USER_ID` in `.env` are correct
 
 ## Testing
 
@@ -156,6 +190,42 @@ Once configured, you can:
 2. Create automated alerts
 3. Build workflow integrations
 4. Set up scheduled notifications
+
+## Technical Implementation
+
+### Smart Recipient Detection Logic
+
+The system uses different approaches for different AI models:
+
+#### For Claude/GPT (Function Calling Models)
+- Enhanced system prompt guides the AI to analyze context and set recipients appropriately
+- AI understands semantic meaning and can distinguish between group/personal messages
+- Implementation: `services/agent-service/main.py:564-594`
+
+#### For Qwen/Local Models (Fallback Mode)
+- Pattern matching with keyword detection
+- Removes recipient keywords from message content to avoid sending "群組 今天會下雨" instead of "今天會下雨"
+- Implementation: `services/agent-service/main.py:242-297`
+
+### Key Code Locations
+- **Agent Service**: `services/agent-service/main.py`
+  - System prompt: Lines 564-594
+  - Fallback detection: Lines 242-297
+  - Response formatting: Lines 505-518
+
+- **MCP Server**: `services/mcp-server/main.py`
+  - LINE API integration
+  - Default recipient handling
+
+- **Environment Config**: `.env`
+  - `LINE_CHANNEL_ACCESS_TOKEN`: Bot access token
+  - `LINE_DEFAULT_RECIPIENT_ID`: Default group ID
+  - `LINE_USER_ID`: Personal user ID (hardcoded in fallback: Ud45d50ec4f060587d3a42c38e67a6008)
+
+### Recipient Priority Logic
+1. Personal keywords ("我", "提醒我") → Use `LINE_USER_ID` (Ud45d50ec4f060587d3a42c38e67a6008)
+2. Group keywords ("群組", "大家") → Use `LINE_DEFAULT_RECIPIENT_ID` (empty array)
+3. No clear indicator → Default to group (empty array)
 
 ## Support
 
