@@ -358,12 +358,12 @@ async def list_tools():
             },
             {
                 "name": "send_notification",
-                "description": "發送通知到 Line/Email/Slack (支援預設收件人)",
+                "description": "發送通知到 Line/WeChat/Email/Slack (支援預設收件人)",
                 "category": "communication",
                 "parameters": {
                     "recipients": "array (optional - 留空使用預設收件人)",
                     "message": "string",
-                    "channel": "string (line/email/slack)",
+                    "channel": "string (line/wechat/email/slack)",
                     "priority": "string"
                 }
             },
@@ -930,6 +930,76 @@ async def send_notification(request: SendNotificationRequest):
                 "notification_id": notification_id,
                 "channel": "line",
                 "recipients": recipients,
+                "results": results,
+                "priority": request.priority,
+                "sent_at": datetime.now().isoformat()
+            }
+
+        # Handle WeChat Work (企業微信) messaging
+        elif request.channel.lower() == "wechat":
+            wechat_webhook = os.getenv("WECHAT_WEBHOOK_URL")
+            if not wechat_webhook:
+                raise HTTPException(status_code=500, detail="WECHAT_WEBHOOK_URL not configured")
+
+            # WeChat Work uses webhook, so recipients are ignored (sends to group that added the bot)
+            # But we can use mentioned_list to @mention specific users
+            mentioned_list = request.recipients if request.recipients else []
+
+            results = []
+            async with httpx.AsyncClient() as client:
+                try:
+                    # WeChat Work robot webhook supports multiple message types
+                    # We'll use text type by default
+                    payload = {
+                        "msgtype": "text",
+                        "text": {
+                            "content": request.message
+                        }
+                    }
+
+                    # If recipients provided, add @mentions (requires userid or mobile)
+                    if mentioned_list:
+                        payload["text"]["mentioned_list"] = mentioned_list
+
+                    response = await client.post(wechat_webhook, json=payload, timeout=10.0)
+
+                    if response.status_code == 200:
+                        resp_data = response.json()
+                        if resp_data.get("errcode") == 0:
+                            logger.info(f"✅ WeChat message sent successfully")
+                            results.append({
+                                "recipient": "WeChat Work Group",
+                                "status": "sent",
+                                "status_code": response.status_code
+                            })
+                        else:
+                            logger.error(f"❌ WeChat API error: {resp_data.get('errmsg')}")
+                            results.append({
+                                "recipient": "WeChat Work Group",
+                                "status": "failed",
+                                "error": resp_data.get("errmsg")
+                            })
+                    else:
+                        logger.error(f"❌ WeChat webhook error: {response.status_code}")
+                        results.append({
+                            "recipient": "WeChat Work Group",
+                            "status": "failed",
+                            "status_code": response.status_code,
+                            "error": response.text
+                        })
+
+                except Exception as send_error:
+                    logger.error(f"Error sending to WeChat: {send_error}")
+                    results.append({
+                        "recipient": "WeChat Work Group",
+                        "status": "failed",
+                        "error": str(send_error)
+                    })
+
+            return {
+                "notification_id": notification_id,
+                "channel": "wechat",
+                "recipients": mentioned_list if mentioned_list else ["WeChat Work Group"],
                 "results": results,
                 "priority": request.priority,
                 "sent_at": datetime.now().isoformat()

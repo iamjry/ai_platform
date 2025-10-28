@@ -307,6 +307,56 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
             "recipients": recipients
         })
 
+    # WeChat messaging patterns - check AFTER LINE
+    wechat_keywords = [
+        "wechat", "weixin", "微信", "企業微信", "企业微信", "企微",
+        "發微信", "发微信", "传微信", "傳微信", "微信訊息", "微信讯息",
+        "微信消息", "微信群", "微信群組", "微信群组", "wechat group"
+    ]
+
+    has_wechat_keyword = any(keyword in task_lower for keyword in wechat_keywords)
+
+    if has_wechat_keyword:
+        # Extract the message content
+        message = task
+
+        # Try to extract message after common patterns
+        content_patterns = [
+            r'(?:說|说|通知|告知|傳|传|發|发|内容|內容)[：:，,]?\s*(.+)',
+            r'(?:wechat|weixin|微信)[：:，,]?\s*(.+)',
+            r'訊息[：:，,]?\s*(.+)',
+            r'讯息[：:，,]?\s*(.+)',
+            r'消息[：:，,]?\s*(.+)'
+        ]
+
+        for pattern in content_patterns:
+            match = re.search(pattern, task, re.IGNORECASE)
+            if match:
+                extracted = match.group(1).strip()
+                extracted = re.sub(r'[，,。！!？?]+$', '', extracted)
+                if len(extracted) > 3:
+                    message = extracted
+                    break
+
+        # Remove recipient-related keywords from the beginning
+        recipient_prefixes = [
+            r'^(?:群組|群组|群|大家|團隊|团队|所有人|全體|全体|group|everyone|team|all)[,，\s]+',
+            r'^(?:微信群|微信群組|微信群组)[,，\s]+'
+        ]
+
+        for prefix_pattern in recipient_prefixes:
+            message = re.sub(prefix_pattern, '', message, flags=re.IGNORECASE).strip()
+
+        # WeChat Work uses webhook (sends to group), recipients can be used for @mentions
+        # Leave empty for now (default behavior)
+        recipients = []
+
+        return ("send_notification", {
+            "message": message,
+            "channel": "wechat",
+            "recipients": recipients
+        })
+
     # Trigger email if: explicit keyword OR (email address + context indicator)
     if has_email_keyword or (emails and has_context_indicator):
         if emails:
@@ -527,6 +577,8 @@ async def execute_agent(request: AgentRequest):
                         recipient_type = "預設群組"
 
                     result = f"✅ LINE 訊息已成功發送！\n\n發送對象: {recipient_type}\n訊息內容: {tool_args.get('message', 'N/A')}\n通知ID: {tool_result.get('notification_id')}\n發送時間: {tool_result.get('sent_at')}"
+                elif tool_name == "send_notification" and tool_args.get("channel") == "wechat":
+                    result = f"✅ 微信訊息已成功發送！\n\n發送對象: 企業微信群組\n訊息內容: {tool_args.get('message', 'N/A')}\n通知ID: {tool_result.get('notification_id')}\n發送時間: {tool_result.get('sent_at')}"
                 elif tool_name == "create_task":
                     result = f"✅ 任務已創建！\n\n任務ID: {tool_result.get('id')}\n標題: {tool_args['title']}\n狀態: {tool_result.get('status')}"
                 elif tool_name == "web_search":
@@ -647,10 +699,31 @@ async def execute_agent(request: AgentRequest):
 
 **不要**詢問 LINE token 或其他技術細節，系統已自動配置
 
+💬 **WeChat（微信）訊息發送**：
+使用 send_notification 工具發送企業微信訊息：
+
+**使用說明**：
+1. **自動發送到群組**：
+   - 企業微信使用 Webhook 機器人，訊息會自動發送到添加了機器人的群組
+   - 不需要指定收件人，系統已自動配置
+   - 語意關鍵字：「微信」、「企業微信」、「企微」、「wechat」、「weixin」
+
+2. **參數設定**：
+   - message: 用戶想發送的訊息內容
+   - channel: 固定使用 "wechat"
+   - recipients: 留空 [] 即可（Webhook 自動發送到群組）
+
+3. **示例**：
+   - 「發微信通知大家會議時間」→ send_notification(message="會議時間...", channel="wechat", recipients=[])
+   - 「用企業微信告訴團隊進度」→ send_notification(message="進度...", channel="wechat", recipients=[])
+
+**不要**詢問 Webhook URL 或其他技術細節，系統已自動配置
+
 示例：
 - 用戶說"send email"但沒有提供收件人 → 詢問收件人email地址
 - 用戶說"send email to john@example.com"但沒有主旨和內容 → 詢問郵件主旨和內容
 - 用戶說"傳訊息到 Line 群組：今晚會下雨" → 直接調用 send_notification，不要詢問任何額外信息
+- 用戶說"發微信通知大家開會" → 直接調用 send_notification，不要詢問任何額外信息
 - 用戶提供了所有信息 → 直接執行發送郵件""",
 
             "research": """你是一個專業的研究助手，擅長信息收集、分析和整理。
