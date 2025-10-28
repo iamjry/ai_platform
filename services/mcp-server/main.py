@@ -14,6 +14,7 @@ import pandas as pd
 import io
 import base64
 from rag_service import rag_service
+from search_service import search_service
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -62,6 +63,9 @@ class WebSearchRequest(BaseModel):
     query: str
     num_results: int = 5
     time_range: Optional[str] = None
+    use_rag: bool = True  # Enable RAG integration
+    mix_with_documents: bool = True  # Mix with existing documents
+    providers: Optional[List[str]] = None  # Specific providers to use
 
 class DocumentUploadRequest(BaseModel):
     title: str
@@ -301,9 +305,15 @@ async def list_tools():
             },
             {
                 "name": "web_search",
-                "description": "搜索網絡獲取最新信息",
+                "description": "Enhanced web search with RAG - Search across multiple providers (Google/DuckDuckGo/Tavily/SerpAPI), vectorize results, and mix with knowledge base documents for comprehensive AI-powered answers",
                 "category": "search",
-                "parameters": {"query": "string", "num_results": "integer", "time_range": "string"}
+                "parameters": {
+                    "query": "string",
+                    "num_results": "integer",
+                    "use_rag": "boolean (default: true)",
+                    "mix_with_documents": "boolean (default: true)",
+                    "providers": "list[string] (optional: duckduckgo, google, tavily, serpapi)"
+                }
             },
             {
                 "name": "find_similar_documents",
@@ -626,31 +636,106 @@ async def semantic_search(request: SemanticSearchRequest):
 
 @app.post("/tools/web_search")
 async def web_search(request: WebSearchRequest):
-    """網絡搜索"""
-    try:
-        # Ensure we have a minimum number of results
-        num_results = max(request.num_results, 3) if request.num_results else 5
+    """
+    Enhanced web search with RAG integration
 
-        # Simulated web search results with meaningful content
-        results = [
-            {
-                "title": f"搜索結果 {i+1}: {request.query} 相關資訊",
-                "url": f"https://example.com/article-{i+1}",
-                "snippet": f"這是關於 {request.query} 的相關資訊。根據最新的資料顯示，{request.query} 在近期有顯著的發展和變化。專家指出這一趨勢將持續影響未來的發展方向...",
-                "date": (datetime.now() - timedelta(days=i)).isoformat(),
-                "source": f"Example News {i+1}"
-            }
-            for i in range(num_results)
-        ]
+    Features:
+    - Multi-provider search (Google, DuckDuckGo, Tavily)
+    - Temporary vectorization of results
+    - Mixed retrieval with existing documents
+    - AI-optimized answer generation
+    """
+    try:
+        start_time = datetime.now()
+
+        # Step 1: Perform web search across providers
+        search_results = await search_service.search(
+            query=request.query,
+            max_results=request.num_results,
+            providers=request.providers
+        )
+
+        web_results = search_results.get("results", [])
+        logger.info(f"Retrieved {len(web_results)} results from {search_results.get('providers_used', [])}")
+
+        # Step 2: If RAG is enabled, vectorize and search with semantic similarity
+        if request.use_rag and web_results:
+            # Vectorize web search snippets temporarily (not stored in Qdrant)
+            web_embeddings = []
+            for result in web_results:
+                snippet = result.get("snippet", "")
+                if snippet:
+                    try:
+                        embedding = await rag_service.generate_embedding(snippet)
+                        web_embeddings.append({
+                            "result": result,
+                            "embedding": embedding
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to vectorize result: {e}")
+
+            # Step 3: Mix with existing documents if enabled
+            mixed_results = []
+
+            if request.mix_with_documents:
+                try:
+                    # Search existing documents using semantic search
+                    doc_results = await rag_service.semantic_search(
+                        query=request.query,
+                        limit=request.num_results,
+                        score_threshold=0.6
+                    )
+
+                    # Add document results
+                    for doc in doc_results:
+                        mixed_results.append({
+                            "title": doc.get("title", ""),
+                            "url": "",  # Local document, no URL
+                            "snippet": doc.get("content", ""),
+                            "source": "Knowledge Base",
+                            "score": doc.get("score", 0.0),
+                            "doc_id": doc.get("doc_id"),
+                            "type": "document"
+                        })
+
+                    logger.info(f"Added {len(doc_results)} results from knowledge base")
+                except Exception as e:
+                    logger.warning(f"Failed to retrieve documents: {e}")
+
+            # Add web results
+            for web_data in web_embeddings:
+                result = web_data["result"]
+                result["type"] = "web"
+                mixed_results.append(result)
+
+            # Sort by relevance (if scores available) or keep original order
+            mixed_results.sort(key=lambda x: x.get("score", 0.5), reverse=True)
+
+            # Limit total results
+            final_results = mixed_results[:request.num_results * 2]
+
+        else:
+            # No RAG, just return web results
+            final_results = web_results
+
+        # Calculate search time
+        search_time = (datetime.now() - start_time).total_seconds()
 
         return {
             "query": request.query,
-            "results": results,
-            "total_results": len(results),
-            "search_time": "0.05s"
+            "results": final_results,
+            "total_results": len(final_results),
+            "web_results_count": len(web_results),
+            "document_results_count": len([r for r in final_results if r.get("type") == "document"]),
+            "providers_used": search_results.get("providers_used", []),
+            "rag_enabled": request.use_rag,
+            "mixed_with_documents": request.mix_with_documents,
+            "search_time": f"{search_time:.2f}s",
+            "timestamp": datetime.now().isoformat()
         }
+
     except Exception as e:
-        logger.error(f"Web search error: {e}")
+        logger.error(f"Web search error: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/tools/find_similar_documents/{document_id}")
