@@ -230,7 +230,16 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
     has_email_keyword = any(keyword in task_lower for keyword in email_keywords)
     has_context_indicator = any(indicator in task_lower for indicator in context_indicators)
 
-    # LINE messaging patterns - check BEFORE email
+    # WeChat messaging patterns - check FIRST (before LINE to avoid conflicts)
+    wechat_keywords = [
+        "wechat", "weixin", "微信", "企業微信", "企业微信", "企微",
+        "發微信", "发微信", "传微信", "傳微信", "微信訊息", "微信讯息",
+        "微信消息", "微信群", "微信群組", "微信群组", "wechat group"
+    ]
+
+    has_wechat_keyword = any(keyword in task_lower for keyword in wechat_keywords)
+
+    # LINE messaging patterns - check AFTER WeChat
     line_keywords = [
         "line", "傳訊息", "传讯息", "發line", "发line", "传line", "傳line",
         "line訊息", "line讯息", "line消息", "line群組", "line群组", "line group",
@@ -239,6 +248,49 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
 
     has_line_keyword = any(keyword in task_lower for keyword in line_keywords)
 
+    # Check WeChat FIRST to avoid "傳訊息" being matched by LINE
+    if has_wechat_keyword:
+        # Extract the message content
+        message = task
+
+        # Try to extract message after common patterns
+        content_patterns = [
+            r'(?:說|说|通知|告知|傳|传|發|发|内容|內容)[：:，,]?\s*(.+)',
+            r'(?:wechat|weixin|微信)[：:，,]?\s*(.+)',
+            r'訊息[：:，,]?\s*(.+)',
+            r'讯息[：:，,]?\s*(.+)',
+            r'消息[：:，,]?\s*(.+)'
+        ]
+
+        for pattern in content_patterns:
+            match = re.search(pattern, task, re.IGNORECASE)
+            if match:
+                extracted = match.group(1).strip()
+                extracted = re.sub(r'[，,。！!？?]+$', '', extracted)
+                if len(extracted) > 3:
+                    message = extracted
+                    break
+
+        # Remove recipient-related keywords from the beginning
+        recipient_prefixes = [
+            r'^(?:群組|群组|群|大家|團隊|团队|所有人|全體|全体|group|everyone|team|all)[,，\s]+',
+            r'^(?:微信群|微信群組|微信群组)[,，\s]+'
+        ]
+
+        for prefix_pattern in recipient_prefixes:
+            message = re.sub(prefix_pattern, '', message, flags=re.IGNORECASE).strip()
+
+        # WeChat Work uses webhook (sends to group), recipients can be used for @mentions
+        # Leave empty for now (default behavior)
+        recipients = []
+
+        return ("send_notification", {
+            "message": message,
+            "channel": "wechat",
+            "recipients": recipients
+        })
+
+    # Check LINE (after WeChat to avoid conflicts)
     if has_line_keyword:
         # Smart recipient detection based on context (do this FIRST)
         recipients = []
@@ -304,56 +356,6 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
         return ("send_notification", {
             "message": message,
             "channel": "line",
-            "recipients": recipients
-        })
-
-    # WeChat messaging patterns - check AFTER LINE
-    wechat_keywords = [
-        "wechat", "weixin", "微信", "企業微信", "企业微信", "企微",
-        "發微信", "发微信", "传微信", "傳微信", "微信訊息", "微信讯息",
-        "微信消息", "微信群", "微信群組", "微信群组", "wechat group"
-    ]
-
-    has_wechat_keyword = any(keyword in task_lower for keyword in wechat_keywords)
-
-    if has_wechat_keyword:
-        # Extract the message content
-        message = task
-
-        # Try to extract message after common patterns
-        content_patterns = [
-            r'(?:說|说|通知|告知|傳|传|發|发|内容|內容)[：:，,]?\s*(.+)',
-            r'(?:wechat|weixin|微信)[：:，,]?\s*(.+)',
-            r'訊息[：:，,]?\s*(.+)',
-            r'讯息[：:，,]?\s*(.+)',
-            r'消息[：:，,]?\s*(.+)'
-        ]
-
-        for pattern in content_patterns:
-            match = re.search(pattern, task, re.IGNORECASE)
-            if match:
-                extracted = match.group(1).strip()
-                extracted = re.sub(r'[，,。！!？?]+$', '', extracted)
-                if len(extracted) > 3:
-                    message = extracted
-                    break
-
-        # Remove recipient-related keywords from the beginning
-        recipient_prefixes = [
-            r'^(?:群組|群组|群|大家|團隊|团队|所有人|全體|全体|group|everyone|team|all)[,，\s]+',
-            r'^(?:微信群|微信群組|微信群组)[,，\s]+'
-        ]
-
-        for prefix_pattern in recipient_prefixes:
-            message = re.sub(prefix_pattern, '', message, flags=re.IGNORECASE).strip()
-
-        # WeChat Work uses webhook (sends to group), recipients can be used for @mentions
-        # Leave empty for now (default behavior)
-        recipients = []
-
-        return ("send_notification", {
-            "message": message,
-            "channel": "wechat",
             "recipients": recipients
         })
 
