@@ -938,11 +938,22 @@ with tab2:
         )
 
     with col2:
-        agent_type = st.selectbox(
+        # Agent type mapping with icons and names
+        agent_options = {
+            "general": f"🤖 {get_text('agent_general', lang)}",
+            "research": f"🔬 {get_text('agent_research', lang)}",
+            "analysis": f"📊 {get_text('agent_analysis', lang)}",
+            "contract_review": f"📋 {get_text('agent_contract_review', lang)}"
+        }
+
+        agent_type_display = st.selectbox(
             get_text("agent_type", lang),
-            ["general", "research", "analysis"],
+            options=list(agent_options.values()),
             help=get_text("agent_type_help", lang)
         )
+
+        # Reverse mapping to get the agent_type ID
+        agent_type = [k for k, v in agent_options.items() if v == agent_type_display][0]
 
         execute_button = st.button(get_text("execute_task", lang), use_container_width=True)
 
