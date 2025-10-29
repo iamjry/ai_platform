@@ -1281,12 +1281,85 @@ with tab3:
 - 提供數據驅動的見解和建議
 
 重點：數據準確性、分析深度、可視化清晰度、actionable insights"""
+        },
+        "contract_review": {
+            "name": get_text("agent_contract_review", lang),
+            "icon": "📋",
+            "description": get_text("agent_contract_review_desc", lang),
+            "use_cases": get_text("agent_contract_review_uses", lang),
+            "prompt": """你是一個專業的契約審查助手，專注於契約分析、風險評估和合規檢查。
+
+你的專長：
+1. 使用 review_contract 工具進行全面的契約審查
+2. 使用 analyze_clause 工具分析特定條款
+3. 使用 compare_contracts 工具比較多份契約
+4. 識別高風險條款和不公平條件
+5. 評估契約合規性和完整性
+
+工作流程：
+1. 接收契約內容後，先判斷契約類型（employment/nda/service/lease/sales）
+2. 使用 review_contract 工具進行完整分析
+3. 識別關鍵風險點並計算風險評分（0-100）
+4. 檢查缺失的必要條款
+5. 提供具體的修改建議和優先級排序
+
+風險評估標準：
+- 0-24分：低風險 ✅ （可以接受）
+- 25-49分：中等風險 ⚠️ （需要仔細審查）
+- 50-74分：高風險 🔴 （建議協商修改）
+- 75-100分：極高風險 🚨 （存在重大問題）
+
+重點關注：
+- 無限責任條款
+- 永久性義務
+- 放棄權利條款
+- 單方面決定權
+- 過於寬泛的競業禁止
+- 自動續約條款
+- 模糊不清的用語
+
+輸出格式：
+1. 契約摘要（類型、當事人、關鍵條款）
+2. 風險評分及等級
+3. 具體風險分析（按嚴重程度分類）
+4. 缺失條款清單
+5. 優先級排序的建議事項
+
+重要提醒：
+- 此工具提供初步分析，不能替代專業法律諮詢
+- 對於高價值或複雜契約，建議諮詢專業律師
+- 分析基於一般法律原則，不針對特定司法管轄區
+
+請使用清晰、專業的語言，確保用戶能夠理解風險並採取行動。"""
         }
     }
 
-    cols = st.columns(3)
-    for idx, (agent_id, config) in enumerate(agent_configs.items()):
-        with cols[idx]:
+    # Display agents in 2x2 grid layout
+    agent_items = list(agent_configs.items())
+
+    # First row: General and Research
+    cols_row1 = st.columns(2)
+    for idx, (agent_id, config) in enumerate(agent_items[:2]):
+        with cols_row1[idx]:
+            st.markdown(f"### {config['icon']} {config['name']}")
+            st.caption(config['description'])
+            st.markdown(f"**{get_text('use_cases', lang)}:**")
+            st.markdown(config['use_cases'])
+
+            with st.expander(get_text("view_system_prompt", lang)):
+                st.text_area(
+                    label="",
+                    value=config['prompt'],
+                    height=200,
+                    disabled=True,
+                    label_visibility="collapsed",
+                    key=f"prompt_{agent_id}"
+                )
+
+    # Second row: Analysis and Contract Review
+    cols_row2 = st.columns(2)
+    for idx, (agent_id, config) in enumerate(agent_items[2:]):
+        with cols_row2[idx]:
             st.markdown(f"### {config['icon']} {config['name']}")
             st.caption(config['description'])
             st.markdown(f"**{get_text('use_cases', lang)}:**")
