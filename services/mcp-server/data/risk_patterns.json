@@ -1,0 +1,158 @@
+{
+  "high_risk_keywords": [
+    "irrevocable",
+    "perpetual",
+    "unlimited liability",
+    "sole discretion",
+    "at our discretion",
+    "without notice",
+    "without cause",
+    "non-negotiable",
+    "binding arbitration",
+    "waive all rights",
+    "hold harmless",
+    "indemnify",
+    "liquidated damages",
+    "penalty",
+    "forfeiture",
+    "automatic renewal",
+    "unilateral",
+    "solely responsible"
+  ],
+  "ambiguous_terms": [
+    "reasonable",
+    "as soon as possible",
+    "promptly",
+    "timely",
+    "best efforts",
+    "appropriate",
+    "substantial",
+    "material",
+    "significant",
+    "approximately",
+    "about",
+    "around",
+    "generally",
+    "normally",
+    "usually"
+  ],
+  "unfair_clauses": [
+    {
+      "pattern": "(?i)waive\\s+(?:all|any)\\s+rights?\\s+to\\s+(?:sue|claim|appeal)",
+      "risk_level": "high",
+      "description": "Waiver of legal rights",
+      "recommendation": "Limit waiver scope or remove entirely"
+    },
+    {
+      "pattern": "(?i)unlimited\\s+liability",
+      "risk_level": "critical",
+      "description": "Unlimited liability exposure",
+      "recommendation": "Cap liability at a specific amount"
+    },
+    {
+      "pattern": "(?i)automatic\\s+renewal",
+      "risk_level": "medium",
+      "description": "Auto-renewal without notice",
+      "recommendation": "Add notice period before renewal"
+    },
+    {
+      "pattern": "(?i)sole(?:\\s+and\\s+absolute)?\\s+discretion",
+      "risk_level": "high",
+      "description": "Unilateral decision-making power",
+      "recommendation": "Add reasonableness standards or mutual agreement"
+    },
+    {
+      "pattern": "(?i)non-compete.{0,100}(?:\\d+\\s+years?|indefinite)",
+      "risk_level": "high",
+      "description": "Overly broad non-compete clause",
+      "recommendation": "Limit duration, scope, and geography"
+    },
+    {
+      "pattern": "(?i)confidentiality.{0,100}perpetual",
+      "risk_level": "medium",
+      "description": "Perpetual confidentiality obligation",
+      "recommendation": "Set reasonable time limit (3-5 years)"
+    }
+  ],
+  "required_clauses": {
+    "employment": [
+      "compensation",
+      "working hours",
+      "termination conditions",
+      "benefits",
+      "responsibilities"
+    ],
+    "nda": [
+      "confidential information definition",
+      "obligations",
+      "exclusions",
+      "term and duration",
+      "return of materials"
+    ],
+    "service_agreement": [
+      "scope of services",
+      "deliverables",
+      "payment terms",
+      "termination",
+      "intellectual property",
+      "liability limitations"
+    ],
+    "lease": [
+      "parties",
+      "property description",
+      "rent amount and due date",
+      "security deposit",
+      "lease term",
+      "maintenance responsibilities",
+      "termination conditions"
+    ],
+    "sales": [
+      "parties",
+      "goods/services description",
+      "price and payment terms",
+      "delivery terms",
+      "warranties",
+      "limitation of liability",
+      "dispute resolution"
+    ]
+  },
+  "red_flags": [
+    {
+      "indicator": "no termination clause",
+      "severity": "high",
+      "impact": "Cannot exit contract"
+    },
+    {
+      "indicator": "no payment terms",
+      "severity": "high",
+      "impact": "Ambiguous financial obligations"
+    },
+    {
+      "indicator": "vague scope of work",
+      "severity": "medium",
+      "impact": "Potential scope creep"
+    },
+    {
+      "indicator": "no liability cap",
+      "severity": "high",
+      "impact": "Unlimited financial exposure"
+    },
+    {
+      "indicator": "exclusive jurisdiction in foreign country",
+      "severity": "medium",
+      "impact": "Expensive legal proceedings"
+    },
+    {
+      "indicator": "no force majeure clause",
+      "severity": "low",
+      "impact": "No protection for unforeseen events"
+    }
+  ],
+  "risk_scoring": {
+    "critical": 25,
+    "high": 15,
+    "medium": 10,
+    "low": 5,
+    "info": 1
+  }
+}
