@@ -1,0 +1,13 @@
+[Unit]
+Description=AI Platform Health Check Timer (Every 5 minutes)
+Documentation=https://github.com/your-org/ai-platform
+Requires=ai-platform.service
+
+[Timer]
+# Run every 5 minutes
+OnBootSec=5min
+OnUnitActiveSec=5min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

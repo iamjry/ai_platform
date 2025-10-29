@@ -1,0 +1,19 @@
+[Unit]
+Description=AI Platform Daily Backup Timer
+Documentation=https://github.com/your-org/ai-platform
+Requires=ai-platform.service
+
+[Timer]
+# Run daily at 2:00 AM
+OnCalendar=daily
+OnCalendar=*-*-* 02:00:00
+Persistent=true
+
+# Randomize start time by up to 15 minutes to avoid load spikes
+RandomizedDelaySec=15min
+
+# Run immediately if missed (e.g., system was off)
+OnBootSec=1h
+
+[Install]
+WantedBy=timers.target

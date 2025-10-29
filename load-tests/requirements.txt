@@ -1,0 +1,12 @@
+# Load Testing Dependencies
+
+# Locust - Modern load testing framework
+locust==2.15.1
+
+# Apache Bench (ab) - Command line tool
+# Install via: apt-get install apache2-utils (Ubuntu) or brew install httpd (macOS)
+
+# Optional: Additional tools
+requests==2.31.0
+matplotlib==3.7.1
+pandas==2.0.3

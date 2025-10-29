@@ -1,0 +1,55 @@
+[Unit]
+Description=AI Platform - Enterprise Multi-Model AI System
+Documentation=https://github.com/your-org/ai-platform
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/ai_platform
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Load environment variables
+EnvironmentFile=/opt/ai_platform/.env
+
+# Pre-start checks
+ExecStartPre=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml config --quiet
+ExecStartPre=/bin/bash -c 'nvidia-smi || (echo "NVIDIA GPUs not detected" && exit 1)'
+
+# Start services in order
+ExecStart=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml up -d postgres redis qdrant rabbitmq
+ExecStart=/bin/sleep 15
+ExecStart=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml up -d ollama litellm
+ExecStart=/bin/sleep 20
+ExecStart=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml up -d mcp-server agent-service web-ui
+ExecStart=/bin/sleep 15
+ExecStart=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml up -d prometheus grafana nginx backup
+
+# Stop all services
+ExecStop=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml stop
+
+# Reload configuration
+ExecReload=/usr/bin/docker compose -f /opt/ai_platform/docker-compose.production.yml restart
+
+# Restart policy
+Restart=on-failure
+RestartSec=30s
+TimeoutStartSec=900
+TimeoutStopSec=300
+
+# Security
+User=root
+Group=root
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=no
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-platform
+
+[Install]
+WantedBy=multi-user.target

@@ -1,599 +1,617 @@
 #!/bin/bash
-set -e
 
-# AI Platform Production Deployment Script for RHEL 9.4 with NVIDIA GPU
-# Target: Red Hat Enterprise Linux 9.4 (Plow) with 2x NVIDIA H100L 94GB
-# Usage: sudo ./deploy-rhel-production.sh [start|stop|restart|status|verify]
+###############################################################################
+# AI Platform - RHEL Production Deployment Script
+# Red Hat Enterprise Linux 9.4 with 2x NVIDIA H100 GPUs
+#
+# This script automates the deployment of the AI Platform in a production
+# environment with GPU acceleration support.
+#
+# Prerequisites:
+# - RHEL 9.4 with kernel 5.14+
+# - 2x NVIDIA H100 GPUs
+# - NVIDIA Driver 535+ installed
+# - CUDA Toolkit 12.0+ installed
+# - Docker 24.0+ and Docker Compose 2.20+
+# - nvidia-container-toolkit installed
+#
+# Usage:
+#   sudo ./deploy-rhel-production.sh [command]
+#
+# Commands:
+#   check       - Check system prerequisites
+#   install     - Install required dependencies
+#   deploy      - Deploy the AI Platform
+#   start       - Start all services
+#   stop        - Stop all services
+#   restart     - Restart all services
+#   status      - Check service status
+#   logs        - View service logs
+#   backup      - Create database backup
+#   update      - Update services to latest version
+#   cleanup     - Clean up old containers and images
+#
+###############################################################################
 
-# Colors
+set -euo pipefail
+
+# Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-MAGENTA='\033[0;35m'
-NC='\033[0m'
+NC='\033[0m' # No Color
 
-# Project name
-PROJECT_NAME="ai-platform-production"
+# Script configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COMPOSE_FILE="${SCRIPT_DIR}/docker-compose.production.yml"
+ENV_FILE="${SCRIPT_DIR}/.env"
+ENV_EXAMPLE="${SCRIPT_DIR}/.env.production.example"
+LOG_FILE="${SCRIPT_DIR}/deployment.log"
 
-# Log functions
-log_info() {
-    echo -e "${BLUE}[INFO]${NC} $1"
-}
+# System requirements
+MIN_MEMORY_GB=32
+MIN_DISK_GB=100
+MIN_CPUS=8
+REQUIRED_GPU_COUNT=2
 
-log_success() {
-    echo -e "${GREEN}[SUCCESS]${NC} $1"
-}
+###############################################################################
+# Utility Functions
+###############################################################################
 
-log_warning() {
-    echo -e "${YELLOW}[WARNING]${NC} $1"
+log() {
+    echo -e "${GREEN}[$(date +'%Y-%m-%d %H:%M:%S')]${NC} $*" | tee -a "${LOG_FILE}"
 }
 
 log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
+    echo -e "${RED}[$(date +'%Y-%m-%d %H:%M:%S')] ERROR:${NC} $*" | tee -a "${LOG_FILE}"
 }
 
-log_section() {
-    echo -e "\n${MAGENTA}[====== $1 ======]${NC}\n"
+log_warn() {
+    echo -e "${YELLOW}[$(date +'%Y-%m-%d %H:%M:%S')] WARNING:${NC} $*" | tee -a "${LOG_FILE}"
 }
 
-# Check if running as root
+log_info() {
+    echo -e "${BLUE}[$(date +'%Y-%m-%d %H:%M:%S')] INFO:${NC} $*" | tee -a "${LOG_FILE}"
+}
+
 check_root() {
-    if [ "$EUID" -ne 0 ]; then
+    if [[ $EUID -ne 0 ]]; then
         log_error "This script must be run as root (use sudo)"
         exit 1
     fi
 }
 
-# Detect OS
-detect_os() {
-    log_info "Detecting operating system..."
+###############################################################################
+# System Checks
+###############################################################################
 
-    if [ -f /etc/os-release ]; then
-        . /etc/os-release
-        OS_NAME=$NAME
-        OS_VERSION=$VERSION_ID
+check_os() {
+    log "Checking operating system..."
 
-        if [[ "$OS_NAME" == *"Red Hat"* ]] && [[ "$OS_VERSION" == "9.4" ]]; then
-            log_success "Detected: $OS_NAME $OS_VERSION"
-        else
-            log_warning "This script is optimized for RHEL 9.4, detected: $OS_NAME $OS_VERSION"
-            read -p "Continue anyway? (yes/no): " confirm
-            [ "$confirm" != "yes" ] && exit 1
-        fi
-    else
-        log_error "Cannot detect OS version"
+    if [[ ! -f /etc/redhat-release ]]; then
+        log_error "This script is designed for Red Hat Enterprise Linux"
+        exit 1
+    fi
+
+    OS_VERSION=$(cat /etc/redhat-release)
+    log "Operating System: ${OS_VERSION}"
+
+    if [[ ! "$OS_VERSION" =~ "Red Hat Enterprise Linux release 9" ]]; then
+        log_warn "This script is optimized for RHEL 9.4. Your version may not be fully supported."
+    fi
+}
+
+check_resources() {
+    log "Checking system resources..."
+
+    # Check CPU cores
+    CPU_CORES=$(nproc)
+    log_info "CPU Cores: ${CPU_CORES}"
+    if [[ ${CPU_CORES} -lt ${MIN_CPUS} ]]; then
+        log_error "Insufficient CPU cores. Required: ${MIN_CPUS}, Available: ${CPU_CORES}"
+        exit 1
+    fi
+
+    # Check memory
+    TOTAL_MEMORY_GB=$(free -g | awk '/^Mem:/{print $2}')
+    log_info "Total Memory: ${TOTAL_MEMORY_GB}GB"
+    if [[ ${TOTAL_MEMORY_GB} -lt ${MIN_MEMORY_GB} ]]; then
+        log_error "Insufficient memory. Required: ${MIN_MEMORY_GB}GB, Available: ${TOTAL_MEMORY_GB}GB"
+        exit 1
+    fi
+
+    # Check disk space
+    AVAILABLE_DISK_GB=$(df -BG "${SCRIPT_DIR}" | awk 'NR==2 {print $4}' | sed 's/G//')
+    log_info "Available Disk Space: ${AVAILABLE_DISK_GB}GB"
+    if [[ ${AVAILABLE_DISK_GB} -lt ${MIN_DISK_GB} ]]; then
+        log_error "Insufficient disk space. Required: ${MIN_DISK_GB}GB, Available: ${AVAILABLE_DISK_GB}GB"
         exit 1
     fi
 }
 
-# Check prerequisites
-check_prerequisites() {
-    log_section "Checking Prerequisites"
+check_nvidia_driver() {
+    log "Checking NVIDIA GPU drivers..."
 
-    local errors=0
-
-    # Check Docker
-    if ! command -v docker &> /dev/null; then
-        log_error "Docker is not installed"
-        log_info "Install with: sudo dnf install -y docker-ce docker-ce-cli containerd.io"
-        errors=$((errors + 1))
-    else
-        log_success "Docker installed: $(docker --version)"
-    fi
-
-    # Check Docker Compose
-    if ! command -v docker compose &> /dev/null && ! command -v docker-compose &> /dev/null; then
-        log_error "Docker Compose is not installed"
-        errors=$((errors + 1))
-    else
-        log_success "Docker Compose installed: $(docker compose version 2>/dev/null || docker-compose --version)"
-    fi
-
-    # Check nvidia-smi
     if ! command -v nvidia-smi &> /dev/null; then
-        log_error "NVIDIA drivers not installed"
-        log_info "Install NVIDIA drivers before continuing"
-        errors=$((errors + 1))
-    else
-        log_success "NVIDIA drivers installed"
-        nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
+        log_error "nvidia-smi not found. Please install NVIDIA drivers."
+        log_error "Installation: sudo dnf install -y nvidia-driver nvidia-settings"
+        exit 1
     fi
 
-    # Check nvidia-container-toolkit
-    if ! docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubi9 nvidia-smi &> /dev/null; then
-        log_error "nvidia-container-toolkit not properly configured"
-        log_info "Install with: sudo dnf install -y nvidia-container-toolkit"
-        errors=$((errors + 1))
-    else
-        log_success "nvidia-container-toolkit configured"
-    fi
+    DRIVER_VERSION=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader | head -n 1)
+    log "NVIDIA Driver Version: ${DRIVER_VERSION}"
 
     # Check GPU count
-    gpu_count=$(nvidia-smi --query-gpu=count --format=csv,noheader | head -1)
-    if [ "$gpu_count" -lt 2 ]; then
-        log_warning "Expected 2 GPUs, found: $gpu_count"
-    else
-        log_success "Found $gpu_count GPUs"
-    fi
+    GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
+    log_info "Detected GPUs: ${GPU_COUNT}"
 
-    # Check available disk space (need at least 100GB)
-    available_space=$(df -BG . | awk 'NR==2 {print $4}' | sed 's/G//')
-    if [ "$available_space" -lt 100 ]; then
-        log_error "Insufficient disk space. Need 100GB, available: ${available_space}GB"
-        errors=$((errors + 1))
-    else
-        log_success "Sufficient disk space: ${available_space}GB"
-    fi
-
-    # Check memory (need at least 32GB)
-    total_mem=$(free -g | awk 'NR==2 {print $2}')
-    if [ "$total_mem" -lt 32 ]; then
-        log_warning "System memory is below 32GB, available: ${total_mem}GB"
-    else
-        log_success "Sufficient memory: ${total_mem}GB"
-    fi
-
-    if [ $errors -gt 0 ]; then
-        log_error "Prerequisites check failed with $errors errors"
+    if [[ ${GPU_COUNT} -lt ${REQUIRED_GPU_COUNT} ]]; then
+        log_error "Insufficient GPUs. Required: ${REQUIRED_GPU_COUNT}, Detected: ${GPU_COUNT}"
         exit 1
     fi
 
-    log_success "All prerequisites met"
+    # Display GPU information
+    log "GPU Information:"
+    nvidia-smi --query-gpu=index,name,memory.total,memory.free --format=csv,noheader | while read line; do
+        log_info "  GPU ${line}"
+    done
 }
 
-# Verify GPU configuration
-verify_gpu() {
-    log_section "Verifying GPU Configuration"
+check_cuda() {
+    log "Checking CUDA installation..."
 
-    # Check GPU details
-    log_info "GPU Information:"
-    nvidia-smi --query-gpu=index,name,driver_version,memory.total,compute_cap --format=table
-
-    # Check CUDA version
-    if command -v nvcc &> /dev/null; then
-        log_info "CUDA Version: $(nvcc --version | grep release | awk '{print $5}' | cut -c2-)"
+    if ! command -v nvcc &> /dev/null; then
+        log_error "CUDA not found. Please install CUDA Toolkit 12.0+"
+        log_error "Installation guide: https://developer.nvidia.com/cuda-downloads"
+        exit 1
     fi
 
-    # Test GPU in Docker
-    log_info "Testing GPU access in Docker container..."
-    if docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubi9 nvidia-smi &> /dev/null; then
-        log_success "GPU accessible from Docker containers"
+    CUDA_VERSION=$(nvcc --version | grep "release" | sed -n 's/.*release \([0-9\.]*\).*/\1/p')
+    log "CUDA Version: ${CUDA_VERSION}"
+}
+
+check_docker() {
+    log "Checking Docker installation..."
+
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker not found. Run './deploy-rhel-production.sh install' first"
+        exit 1
+    fi
+
+    DOCKER_VERSION=$(docker --version | sed -n 's/Docker version \([^,]*\).*/\1/p')
+    log "Docker Version: ${DOCKER_VERSION}"
+
+    if ! docker ps &> /dev/null; then
+        log_error "Docker daemon is not running"
+        systemctl start docker
+        sleep 5
+    fi
+}
+
+check_docker_compose() {
+    log "Checking Docker Compose installation..."
+
+    if ! command -v docker compose version &> /dev/null; then
+        log_error "Docker Compose not found. Run './deploy-rhel-production.sh install' first"
+        exit 1
+    fi
+
+    COMPOSE_VERSION=$(docker compose version | sed -n 's/Docker Compose version \(v[0-9\.]*\).*/\1/p')
+    log "Docker Compose Version: ${COMPOSE_VERSION}"
+}
+
+check_nvidia_docker() {
+    log "Checking nvidia-container-toolkit..."
+
+    if ! docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubi9 nvidia-smi &> /dev/null; then
+        log_error "nvidia-container-toolkit not working properly"
+        log_error "Run './deploy-rhel-production.sh install' to install it"
+        exit 1
+    fi
+
+    log "nvidia-container-toolkit is working correctly"
+}
+
+check_firewall() {
+    log "Checking firewall configuration..."
+
+    if systemctl is-active --quiet firewalld; then
+        log_info "Firewalld is active"
+
+        # Check required ports
+        REQUIRED_PORTS=(80 443 8501 8000 8001 4000 3000 9090)
+        for port in "${REQUIRED_PORTS[@]}"; do
+            if ! firewall-cmd --list-ports | grep -q "${port}/tcp"; then
+                log_warn "Port ${port}/tcp is not open in firewall"
+            fi
+        done
     else
-        log_error "Cannot access GPU from Docker containers"
+        log_warn "Firewalld is not active"
+    fi
+}
+
+check_selinux() {
+    log "Checking SELinux status..."
+
+    SELINUX_STATUS=$(getenforce)
+    log_info "SELinux Status: ${SELINUX_STATUS}"
+
+    if [[ "${SELINUX_STATUS}" == "Enforcing" ]]; then
+        log_warn "SELinux is in enforcing mode. You may need to configure policies for Docker."
+    fi
+}
+
+###############################################################################
+# Installation Functions
+###############################################################################
+
+install_docker() {
+    log "Installing Docker..."
+
+    # Add Docker repository
+    dnf config-manager --add-repo=https://download.docker.com/linux/centos/docker-ce.repo
+
+    # Install Docker
+    dnf install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin
+
+    # Start and enable Docker
+    systemctl start docker
+    systemctl enable docker
+
+    log "Docker installed successfully"
+}
+
+install_docker_compose() {
+    log "Installing Docker Compose..."
+
+    # Docker Compose is included in docker-compose-plugin
+    dnf install -y docker-compose-plugin
+
+    log "Docker Compose installed successfully"
+}
+
+install_nvidia_container_toolkit() {
+    log "Installing nvidia-container-toolkit..."
+
+    # Add NVIDIA repository
+    distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.repo | \
+        tee /etc/yum.repos.d/nvidia-container-toolkit.repo
+
+    # Install nvidia-container-toolkit
+    dnf install -y nvidia-container-toolkit
+
+    # Configure Docker to use NVIDIA runtime
+    nvidia-ctk runtime configure --runtime=docker
+
+    # Restart Docker
+    systemctl restart docker
+
+    # Test GPU access
+    if docker run --rm --gpus all nvidia/cuda:12.2.0-base-ubi9 nvidia-smi; then
+        log "nvidia-container-toolkit installed and configured successfully"
+    else
+        log_error "Failed to verify nvidia-container-toolkit installation"
         exit 1
     fi
 }
 
-# Configure firewall
 configure_firewall() {
-    log_section "Configuring Firewall"
+    log "Configuring firewall..."
 
-    if command -v firewall-cmd &> /dev/null; then
-        log_info "Configuring firewalld..."
+    if systemctl is-active --quiet firewalld; then
+        firewall-cmd --permanent --add-port=80/tcp
+        firewall-cmd --permanent --add-port=443/tcp
+        firewall-cmd --permanent --add-port=8501/tcp
+        firewall-cmd --permanent --add-port=8000/tcp
+        firewall-cmd --permanent --add-port=8001/tcp
+        firewall-cmd --permanent --add-port=4000/tcp
+        firewall-cmd --permanent --add-port=3000/tcp
+        firewall-cmd --permanent --add-port=9090/tcp
+        firewall-cmd --reload
 
-        # Check if firewalld is running
-        if systemctl is-active --quiet firewalld; then
-            # Add ports
-            firewall-cmd --permanent --add-port=8501/tcp  # Web UI
-            firewall-cmd --permanent --add-port=8000/tcp  # Agent Service
-            firewall-cmd --permanent --add-port=8001/tcp  # MCP Server
-            firewall-cmd --permanent --add-port=4000/tcp  # LiteLLM
-            firewall-cmd --permanent --add-port=3000/tcp  # Grafana
-            firewall-cmd --permanent --add-port=9090/tcp  # Prometheus
-            firewall-cmd --reload
-
-            log_success "Firewall configured"
-        else
-            log_warning "firewalld is not running"
-        fi
+        log "Firewall configured successfully"
     else
-        log_info "firewalld not found, skipping firewall configuration"
+        log_warn "Firewalld is not running, skipping firewall configuration"
     fi
 }
 
-# Configure SELinux
-configure_selinux() {
-    log_section "Configuring SELinux"
+###############################################################################
+# Deployment Functions
+###############################################################################
 
-    if command -v getenforce &> /dev/null; then
-        selinux_status=$(getenforce)
-        log_info "SELinux status: $selinux_status"
+prepare_environment() {
+    log "Preparing environment..."
 
-        if [ "$selinux_status" = "Enforcing" ]; then
-            log_info "Setting SELinux booleans for Docker..."
-            setsebool -P container_manage_cgroup on || log_warning "Failed to set container_manage_cgroup"
-
-            # Set proper context for volumes
-            chcon -Rt svirt_sandbox_file_t ./data || log_warning "Failed to set SELinux context for data directory"
-
-            log_success "SELinux configured for containers"
+    # Create .env file if it doesn't exist
+    if [[ ! -f "${ENV_FILE}" ]]; then
+        if [[ -f "${ENV_EXAMPLE}" ]]; then
+            log "Creating .env file from template..."
+            cp "${ENV_EXAMPLE}" "${ENV_FILE}"
+            log_warn "Please edit ${ENV_FILE} with your production credentials"
+            log_warn "Required changes:"
+            log_warn "  1. Set all API keys (OPENAI_API_KEY, ANTHROPIC_API_KEY, etc.)"
+            log_warn "  2. Replace all 'CHANGE_ME_TO_SECURE_PASSWORD_*' with strong passwords"
+            log_warn "  3. Configure SSL certificate paths"
+            log_warn "  4. Update domain names and email addresses"
+            echo ""
+            read -p "Press Enter when you have configured .env file..."
+        else
+            log_error ".env.production.example not found"
+            exit 1
         fi
     fi
+
+    # Create necessary directories
+    mkdir -p "${SCRIPT_DIR}/config/nginx/ssl"
+    mkdir -p "${SCRIPT_DIR}/config/grafana/dashboards"
+    mkdir -p "${SCRIPT_DIR}/config/grafana/datasources"
+    mkdir -p "${SCRIPT_DIR}/backups"
+    mkdir -p "${SCRIPT_DIR}/logs"
+
+    # Set permissions
+    chmod 600 "${ENV_FILE}"
+
+    log "Environment prepared successfully"
 }
 
-# Generate production .env file
-generate_production_env() {
-    if [ -f .env ]; then
-        log_warning ".env file already exists, skipping generation"
-        return
-    fi
-
-    log_section "Generating Production Environment Configuration"
-
-    # Generate secure passwords
-    POSTGRES_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-    REDIS_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-    RABBITMQ_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-    GRAFANA_PASS=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-    LITELLM_KEY=$(openssl rand -base64 32 | tr -d "=+/" | cut -c1-32)
-
-    # Prompt for API keys
-    read -p "Enter OpenAI API Key (or press Enter to skip): " OPENAI_KEY
-    read -p "Enter Anthropic API Key (or press Enter to skip): " ANTHROPIC_KEY
-    read -p "Enter SMTP server (or press Enter to skip): " SMTP_SERVER_INPUT
-
-    cat > .env << EOF
-# Production Environment Configuration for RHEL 9.4
-# Generated on: $(date)
-# WARNING: Keep this file secure and never commit to version control
-
-# ====================
-# API Keys
-# ====================
-OPENAI_API_KEY=${OPENAI_KEY:-sk-your-openai-api-key}
-ANTHROPIC_API_KEY=${ANTHROPIC_KEY:-sk-ant-your-anthropic-api-key}
-
-# ====================
-# Database Configuration
-# ====================
-POSTGRES_USER=ai_admin
-POSTGRES_PASSWORD=${POSTGRES_PASS}
-POSTGRES_DB=ai_platform_prod
-
-# ====================
-# Redis Configuration
-# ====================
-REDIS_PASSWORD=${REDIS_PASS}
-
-# ====================
-# RabbitMQ Configuration
-# ====================
-RABBITMQ_DEFAULT_USER=ai_admin
-RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS}
-
-# ====================
-# Application Settings
-# ====================
-ENVIRONMENT=production
-LOG_LEVEL=info
-MAX_CONCURRENT_REQUESTS=100
-DEBUG=false
-
-# ====================
-# GPU Configuration
-# ====================
-ENABLE_GPU=true
-GPU_MEMORY_UTILIZATION=0.9
-NVIDIA_VISIBLE_DEVICES=0,1
-CUDA_VISIBLE_DEVICES=0,1
-
-# ====================
-# Security
-# ====================
-LITELLM_MASTER_KEY=${LITELLM_KEY}
-GRAFANA_ADMIN_PASSWORD=${GRAFANA_PASS}
-
-# ====================
-# SMTP Configuration (Optional)
-# ====================
-SMTP_SERVER=${SMTP_SERVER_INPUT:-}
-SMTP_PORT=587
-SMTP_USERNAME=
-SMTP_PASSWORD=
-SMTP_FROM_EMAIL=noreply@ai-platform.local
-SMTP_ENABLED=${SMTP_SERVER_INPUT:+true}
-
-# ====================
-# Monitoring
-# ====================
-GRAFANA_ROOT_URL=http://localhost:3000
-PROMETHEUS_RETENTION=30d
-
-# ====================
-# Performance Tuning
-# ====================
-POSTGRES_SHARED_BUFFERS=2GB
-POSTGRES_EFFECTIVE_CACHE_SIZE=6GB
-REDIS_MAXMEMORY=3gb
-EOF
-
-    # Secure the .env file
-    chmod 600 .env
-    chown root:root .env
-
-    log_success ".env file created with secure passwords"
-    log_warning "Passwords saved to .env - keep this file secure!"
-
-    # Save passwords to separate file for admin reference
-    cat > .env.passwords << EOF
-# AI Platform Production Passwords
-# Generated on: $(date)
-# KEEP THIS FILE SECURE AND IN A SAFE LOCATION
-
-PostgreSQL Password: ${POSTGRES_PASS}
-Redis Password: ${REDIS_PASS}
-RabbitMQ Password: ${RABBITMQ_PASS}
-Grafana Admin Password: ${GRAFANA_PASS}
-LiteLLM Master Key: ${LITELLM_KEY}
-EOF
-
-    chmod 600 .env.passwords
-    log_info "Passwords also saved to .env.passwords for your reference"
+pull_images() {
+    log "Pulling Docker images..."
+    docker compose -f "${COMPOSE_FILE}" pull
+    log "Images pulled successfully"
 }
 
-# Setup directories
-setup_directories() {
-    log_section "Setting Up Directory Structure"
-
-    mkdir -p data/{postgres,redis,rabbitmq,qdrant,prometheus,grafana,models}
-    mkdir -p logs/{mcp-server,agent-service,web-ui,litellm}
-    mkdir -p backups/{database,config}
-    mkdir -p config/ssl
-
-    # Set proper permissions
-    chmod -R 755 data logs backups config
-
-    log_success "Directory structure created"
-}
-
-# Pull and build images
 build_services() {
-    log_section "Building Docker Images"
-
-    # Pull base images
-    log_info "Pulling base images..."
-    docker compose pull postgres redis qdrant rabbitmq prometheus grafana
-
-    # Build custom services
-    log_info "Building application services..."
-    docker compose build --no-cache mcp-server agent-service web-ui
-
-    log_success "Docker images ready"
+    log "Building custom services..."
+    docker compose -f "${COMPOSE_FILE}" build --no-cache
+    log "Services built successfully"
 }
 
-# Start services with GPU
 start_services() {
-    log_section "Starting Services with GPU Support"
+    log "Starting services..."
 
-    # Start infrastructure layer
+    # Start infrastructure services first
     log_info "Starting infrastructure services..."
-    docker compose up -d postgres redis qdrant rabbitmq
-
-    log_info "Waiting for infrastructure to be ready..."
+    docker compose -f "${COMPOSE_FILE}" up -d postgres redis qdrant rabbitmq
     sleep 15
 
-    # Initialize database
-    log_info "Initializing database..."
-    ./scripts/init-db.sh init || log_warning "Database initialization may need manual retry"
-
-    # Start LLM services with GPU
-    log_info "Starting LLM services with GPU acceleration..."
-    docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d ollama litellm
-
-    log_info "Waiting for LLM services..."
+    # Start LLM services
+    log_info "Starting LLM services..."
+    docker compose -f "${COMPOSE_FILE}" up -d ollama litellm
     sleep 20
-
-    # Pull Ollama models optimized for H100L
-    log_info "Pulling optimized Ollama models for H100L..."
-    docker exec ai-ollama ollama pull llama3.1:70b || log_warning "Model download failed, can retry later"
-    docker exec ai-ollama ollama pull qwen2.5:32b || log_warning "Model download failed, can retry later"
 
     # Start application services
     log_info "Starting application services..."
-    docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d mcp-server agent-service web-ui
+    docker compose -f "${COMPOSE_FILE}" up -d mcp-server agent-service web-ui
+    sleep 15
 
-    # Start monitoring
+    # Start monitoring services
     log_info "Starting monitoring services..."
-    docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d prometheus grafana
+    docker compose -f "${COMPOSE_FILE}" up -d prometheus grafana
+    sleep 10
 
-    log_success "All services started"
+    # Start reverse proxy
+    log_info "Starting reverse proxy..."
+    docker compose -f "${COMPOSE_FILE}" up -d nginx
+
+    log "All services started successfully"
 }
 
-# Wait for services to be healthy
-wait_for_health() {
-    log_section "Waiting for Services to Become Healthy"
+check_services() {
+    log "Checking service health..."
 
-    local max_attempts=60
-    local attempt=0
+    sleep 30  # Wait for services to stabilize
 
-    while [ $attempt -lt $max_attempts ]; do
-        attempt=$((attempt + 1))
+    # Check service status
+    docker compose -f "${COMPOSE_FILE}" ps
 
-        local healthy=0
-        local total=6
+    # Check health endpoints
+    HEALTH_CHECKS=(
+        "http://localhost:8001/health|MCP Server"
+        "http://localhost:8002/health|Agent Service"
+        "http://localhost:4000/health/readiness|LiteLLM"
+        "http://localhost:9090/-/healthy|Prometheus"
+    )
 
-        # Check each service
-        curl -sf http://localhost:6333/health | grep -q "ok" && healthy=$((healthy + 1))
-        curl -sf http://localhost:4000/health/readiness && healthy=$((healthy + 1))
-        curl -sf http://localhost:8001/health && healthy=$((healthy + 1))
-        curl -sf http://localhost:8000/health && healthy=$((healthy + 1))
-        curl -sf http://localhost:8501 &> /dev/null && healthy=$((healthy + 1))
-        curl -sf http://localhost:9090/-/healthy && healthy=$((healthy + 1))
-
-        if [ $healthy -eq $total ]; then
-            log_success "All services are healthy"
-            return 0
+    for check in "${HEALTH_CHECKS[@]}"; do
+        IFS='|' read -r url name <<< "$check"
+        if curl -sf "${url}" > /dev/null 2>&1; then
+            log "${name}: ${GREEN}✓ Healthy${NC}"
+        else
+            log_error "${name}: ${RED}✗ Unhealthy${NC}"
         fi
-
-        echo -n "."
-        sleep 5
     done
-
-    log_warning "Some services may not be fully healthy after ${max_attempts} attempts"
 }
 
-# Setup automated backups
-setup_backups() {
-    log_section "Setting Up Automated Backups"
+###############################################################################
+# Main Commands
+###############################################################################
 
-    # Create backup script
-    cat > /usr/local/bin/ai-platform-backup.sh << 'EOF'
-#!/bin/bash
-BACKUP_DIR="/opt/ai_platform/backups/database"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BACKUP_FILE="${BACKUP_DIR}/backup_${TIMESTAMP}.sql.gz"
-
-mkdir -p ${BACKUP_DIR}
-
-# Backup database
-docker exec ai-postgres pg_dump -U ai_admin ai_platform_prod | gzip > ${BACKUP_FILE}
-
-# Keep only last 30 days of backups
-find ${BACKUP_DIR} -name "backup_*.sql.gz" -mtime +30 -delete
-
-echo "Backup completed: ${BACKUP_FILE}"
-EOF
-
-    chmod +x /usr/local/bin/ai-platform-backup.sh
-
-    # Add to crontab (daily at 2 AM)
-    (crontab -l 2>/dev/null; echo "0 2 * * * /usr/local/bin/ai-platform-backup.sh >> /var/log/ai-platform-backup.log 2>&1") | crontab -
-
-    log_success "Automated backups configured (daily at 2 AM)"
+cmd_check() {
+    log "=== Checking System Prerequisites ==="
+    check_os
+    check_resources
+    check_nvidia_driver
+    check_cuda
+    check_docker || log_warn "Docker not installed"
+    check_docker_compose || log_warn "Docker Compose not installed"
+    check_nvidia_docker || log_warn "nvidia-container-toolkit not installed"
+    check_firewall
+    check_selinux
+    log "=== Prerequisite Check Complete ==="
 }
 
-# Show status
-show_status() {
-    log_section "System Status"
+cmd_install() {
+    check_root
+    log "=== Installing Dependencies ==="
 
-    echo -e "${BLUE}Service Status:${NC}"
-    docker compose ps
+    install_docker
+    install_docker_compose
+    install_nvidia_container_toolkit
+    configure_firewall
 
-    echo -e "\n${BLUE}GPU Status:${NC}"
-    nvidia-smi --query-gpu=index,name,utilization.gpu,utilization.memory,memory.used,memory.total,temperature.gpu --format=table
-
-    echo -e "\n${BLUE}Resource Usage:${NC}"
-    docker stats --no-stream --format "table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
-
-    echo -e "\n${BLUE}Access URLs:${NC}"
-    echo "  🌐 Web UI:        http://$(hostname -I | awk '{print $1}'):8501"
-    echo "  📊 Grafana:       http://$(hostname -I | awk '{print $1}'):3000"
-    echo "  📈 Prometheus:    http://$(hostname -I | awk '{print $1}'):9090"
-    echo "  🐰 RabbitMQ:      http://$(hostname -I | awk '{print $1}'):15672"
-    echo "  🔧 LiteLLM:       http://$(hostname -I | awk '{print $1}'):4000"
-
-    echo -e "\n${BLUE}Credentials:${NC}"
-    echo "  See .env.passwords file for all credentials"
+    log "=== Installation Complete ==="
+    log "Run './deploy-rhel-production.sh check' to verify installation"
 }
 
-# Run production tests
-run_production_tests() {
-    log_section "Running Production Tests"
+cmd_deploy() {
+    check_root
+    log "=== Deploying AI Platform (Production) ==="
 
-    source .env
+    cmd_check
+    prepare_environment
+    pull_images
+    build_services
+    start_services
+    check_services
 
-    local failed=0
+    log "=== Deployment Complete ==="
+    log ""
+    log "Access the platform:"
+    log "  Web UI: http://localhost:8501"
+    log "  Grafana: http://localhost:3000 (admin/admin)"
+    log "  Prometheus: http://localhost:9090"
+    log ""
+    log "Next steps:"
+    log "  1. Configure SSL certificates for NGINX"
+    log "  2. Set up automated backups (cron)"
+    log "  3. Configure monitoring alerts"
+    log "  4. Test disaster recovery procedures"
+}
 
-    # Test GPU access
-    echo -n "Testing GPU in Ollama container... "
-    if docker exec ai-ollama nvidia-smi &> /dev/null; then
-        echo -e "${GREEN}✓${NC}"
+cmd_start() {
+    check_root
+    log "Starting services..."
+    docker compose -f "${COMPOSE_FILE}" start
+    log "Services started"
+}
+
+cmd_stop() {
+    check_root
+    log "Stopping services..."
+    docker compose -f "${COMPOSE_FILE}" stop
+    log "Services stopped"
+}
+
+cmd_restart() {
+    check_root
+    log "Restarting services..."
+    docker compose -f "${COMPOSE_FILE}" restart
+    log "Services restarted"
+}
+
+cmd_status() {
+    log "Service Status:"
+    docker compose -f "${COMPOSE_FILE}" ps
+}
+
+cmd_logs() {
+    SERVICE="${2:-}"
+    if [[ -z "${SERVICE}" ]]; then
+        docker compose -f "${COMPOSE_FILE}" logs -f --tail=100
     else
-        echo -e "${RED}✗${NC}"
-        failed=$((failed + 1))
-    fi
-
-    # Test services
-    echo -n "Testing PostgreSQL... "
-    docker exec ai-postgres pg_isready -U ai_admin &> /dev/null && echo -e "${GREEN}✓${NC}" || { echo -e "${RED}✗${NC}"; failed=$((failed + 1)); }
-
-    echo -n "Testing Redis... "
-    docker exec ai-redis redis-cli -a "$REDIS_PASSWORD" ping 2>/dev/null | grep -q PONG && echo -e "${GREEN}✓${NC}" || { echo -e "${RED}✗${NC}"; failed=$((failed + 1)); }
-
-    echo -n "Testing Qdrant... "
-    curl -sf http://localhost:6333/health | grep -q ok && echo -e "${GREEN}✓${NC}" || { echo -e "${RED}✗${NC}"; failed=$((failed + 1)); }
-
-    echo -n "Testing LiteLLM... "
-    curl -sf http://localhost:4000/health/readiness && echo -e "${GREEN}✓${NC}" || { echo -e "${RED}✗${NC}"; failed=$((failed + 1)); }
-
-    echo -n "Testing MCP Server... "
-    curl -sf http://localhost:8001/health && echo -e "${GREEN}✓${NC}" || { echo -e "${RED}✗${NC}"; failed=$((failed + 1)); }
-
-    echo -n "Testing Agent Service... "
-    curl -sf http://localhost:8000/health && echo -e "${GREEN}✓${NC}" || { echo -e "${RED}✗${NC}"; failed=$((failed + 1)); }
-
-    if [ $failed -eq 0 ]; then
-        log_success "All tests passed"
-    else
-        log_warning "$failed tests failed"
+        docker compose -f "${COMPOSE_FILE}" logs -f --tail=100 "${SERVICE}"
     fi
 }
 
-# Stop services
-stop_services() {
-    log_info "Stopping all services..."
-    docker compose -f docker-compose.yml -f docker-compose.gpu.yml down
-    log_success "Services stopped"
+cmd_backup() {
+    check_root
+    log "Creating database backup..."
+
+    BACKUP_DIR="${SCRIPT_DIR}/backups"
+    BACKUP_FILE="${BACKUP_DIR}/backup_$(date +%Y%m%d_%H%M%S).sql"
+
+    mkdir -p "${BACKUP_DIR}"
+
+    docker compose -f "${COMPOSE_FILE}" exec -T postgres \
+        pg_dump -U "${POSTGRES_USER:-admin}" "${POSTGRES_DB:-ai_platform}" > "${BACKUP_FILE}"
+
+    gzip "${BACKUP_FILE}"
+    log "Backup created: ${BACKUP_FILE}.gz"
 }
 
-# Restart services
-restart_services() {
-    log_info "Restarting services..."
-    docker compose -f docker-compose.yml -f docker-compose.gpu.yml restart
-    log_success "Services restarted"
+cmd_update() {
+    check_root
+    log "Updating services..."
+
+    pull_images
+    build_services
+    docker compose -f "${COMPOSE_FILE}" up -d --force-recreate
+
+    log "Services updated successfully"
 }
 
-# Main function
+cmd_cleanup() {
+    check_root
+    log "Cleaning up Docker resources..."
+
+    docker system prune -af --volumes
+
+    log "Cleanup complete"
+}
+
+###############################################################################
+# Main Script
+###############################################################################
+
 main() {
-    case "${1:-start}" in
+    COMMAND="${1:-help}"
+
+    case "${COMMAND}" in
+        check)
+            cmd_check
+            ;;
+        install)
+            cmd_install
+            ;;
+        deploy)
+            cmd_deploy
+            ;;
         start)
-            echo -e "${MAGENTA}"
-            echo "╔════════════════════════════════════════════════════════╗"
-            echo "║  AI Platform - Production Deployment for RHEL 9.4     ║"
-            echo "║  Target: 2x NVIDIA H100L 94GB GPUs                    ║"
-            echo "╚════════════════════════════════════════════════════════╝"
-            echo -e "${NC}"
-
-            check_root
-            detect_os
-            check_prerequisites
-            verify_gpu
-            configure_firewall
-            configure_selinux
-            generate_production_env
-            setup_directories
-            build_services
-            start_services
-            wait_for_health
-            setup_backups
-            run_production_tests
-            show_status
-
-            echo ""
-            log_success "🎉 Production deployment complete!"
-            log_info "Access the Web UI at: http://$(hostname -I | awk '{print $1}'):8501"
-            log_warning "Review .env.passwords for all credentials"
+            cmd_start
             ;;
         stop)
-            stop_services
+            cmd_stop
             ;;
         restart)
-            restart_services
+            cmd_restart
             ;;
         status)
-            show_status
+            cmd_status
             ;;
-        verify)
-            verify_gpu
-            run_production_tests
+        logs)
+            cmd_logs "$@"
             ;;
-        *)
-            echo "Usage: $0 {start|stop|restart|status|verify}"
-            exit 1
+        backup)
+            cmd_backup
+            ;;
+        update)
+            cmd_update
+            ;;
+        cleanup)
+            cmd_cleanup
+            ;;
+        help|*)
+            echo "AI Platform - RHEL Production Deployment"
+            echo ""
+            echo "Usage: sudo $0 [command]"
+            echo ""
+            echo "Commands:"
+            echo "  check       - Check system prerequisites"
+            echo "  install     - Install required dependencies"
+            echo "  deploy      - Deploy the AI Platform"
+            echo "  start       - Start all services"
+            echo "  stop        - Stop all services"
+            echo "  restart     - Restart all services"
+            echo "  status      - Check service status"
+            echo "  logs [svc]  - View service logs"
+            echo "  backup      - Create database backup"
+            echo "  update      - Update services to latest version"
+            echo "  cleanup     - Clean up old containers and images"
+            echo "  help        - Show this help message"
             ;;
     esac
 }
 
-# Run main function
 main "$@"

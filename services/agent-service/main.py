@@ -112,11 +112,15 @@ def convert_tools_to_functions(mcp_tools: List[Dict]) -> List[Dict]:
                 # e.g., "array (optional - 留空使用預設收件人)" -> "array"
                 base_type = param_type.split("(")[0].strip() if "(" in param_type else param_type
 
+                # Handle list[type] format (e.g., "list[string]" -> "array")
+                if base_type.startswith("list[") and base_type.endswith("]"):
+                    base_type = "array"
+
                 # Convert invalid types to valid JSON Schema types
                 mapped_type = type_mapping.get(base_type, base_type)
                 properties[param_name] = {"type": mapped_type}
 
-                # Add items for array type
+                # Add items for array type - REQUIRED by Anthropic API
                 if mapped_type == "array":
                     properties[param_name]["items"] = {"type": "string"}
 

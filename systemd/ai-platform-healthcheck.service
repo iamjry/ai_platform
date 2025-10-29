@@ -1,0 +1,34 @@
+[Unit]
+Description=AI Platform Health Check Service
+Documentation=https://github.com/your-org/ai-platform
+Requires=ai-platform.service
+After=ai-platform.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai_platform
+
+# Health check script
+ExecStart=/bin/bash -c '\
+    services="mcp-server agent-service litellm"; \
+    failed=0; \
+    for svc in $services; do \
+        if ! docker compose -f /opt/ai_platform/docker-compose.production.yml ps $svc | grep -q "Up"; then \
+            echo "ERROR: Service $svc is not running"; \
+            failed=1; \
+        fi; \
+    done; \
+    if [ $failed -eq 1 ]; then \
+        systemctl restart ai-platform.service; \
+        exit 1; \
+    fi; \
+    echo "All services healthy"; \
+'
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-platform-healthcheck
+
+[Install]
+WantedBy=multi-user.target

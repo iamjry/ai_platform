@@ -1,0 +1,27 @@
+[Unit]
+Description=AI Platform Database Backup Service
+Documentation=https://github.com/your-org/ai-platform
+Requires=ai-platform.service
+After=ai-platform.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/ai_platform
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Load environment variables
+EnvironmentFile=/opt/ai_platform/.env
+
+# Execute backup
+ExecStart=/opt/ai_platform/deploy-rhel-production.sh backup
+
+# Cleanup old backups (keep last 30 days)
+ExecStartPost=/usr/bin/find /opt/ai_platform/backups -name "backup_*.sql.gz" -mtime +30 -delete
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ai-platform-backup
+
+[Install]
+WantedBy=multi-user.target
