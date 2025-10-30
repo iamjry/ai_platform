@@ -973,30 +973,51 @@ with tab2:
                 st.session_state.agent_messages = []
                 st.rerun()
 
-    # Process uploaded file if present
-    file_content = ""
-    if uploaded_file is not None:
-        try:
-            if uploaded_file.type == "application/pdf":
-                # Extract text from PDF
-                import PyPDF2
-                import io
-                pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.read()))
-                file_content = "\n\n".join([page.extract_text() for page in pdf_reader.pages])
-            elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-                # Extract text from DOCX
-                import docx
-                import io
-                doc = docx.Document(io.BytesIO(uploaded_file.read()))
-                file_content = "\n\n".join([paragraph.text for paragraph in doc.paragraphs])
-            elif uploaded_file.type == "text/plain":
-                # Extract text from TXT
-                file_content = uploaded_file.read().decode('utf-8')
+    # Initialize session state for file content
+    if 'uploaded_file_content' not in st.session_state:
+        st.session_state.uploaded_file_content = ""
+    if 'uploaded_file_name' not in st.session_state:
+        st.session_state.uploaded_file_name = ""
 
-            if file_content:
-                st.success(f"✅ {get_text('file_loaded', lang)}: {uploaded_file.name} ({len(file_content)} {get_text('characters', lang)})")
-        except Exception as e:
-            st.error(f"❌ {get_text('file_load_error', lang)}: {str(e)}")
+    # Process uploaded file if present
+    if uploaded_file is not None:
+        # Only process if it's a new file or different file
+        if uploaded_file.name != st.session_state.uploaded_file_name:
+            try:
+                file_content = ""
+                if uploaded_file.type == "application/pdf":
+                    # Extract text from PDF
+                    import PyPDF2
+                    import io
+                    pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.read()))
+                    file_content = "\n\n".join([page.extract_text() for page in pdf_reader.pages])
+                elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                    # Extract text from DOCX
+                    import docx
+                    import io
+                    doc = docx.Document(io.BytesIO(uploaded_file.read()))
+                    file_content = "\n\n".join([paragraph.text for paragraph in doc.paragraphs])
+                elif uploaded_file.type == "text/plain":
+                    # Extract text from TXT
+                    file_content = uploaded_file.read().decode('utf-8')
+
+                # Store in session state
+                st.session_state.uploaded_file_content = file_content
+                st.session_state.uploaded_file_name = uploaded_file.name
+
+                if file_content:
+                    st.success(f"✅ {get_text('file_loaded', lang)}: {uploaded_file.name} ({len(file_content)} {get_text('characters', lang)})")
+                else:
+                    st.warning(f"⚠️ 文件已上傳但未能提取內容: {uploaded_file.name}")
+            except Exception as e:
+                st.error(f"❌ {get_text('file_load_error', lang)}: {str(e)}")
+                st.session_state.uploaded_file_content = ""
+    elif st.session_state.uploaded_file_content:
+        # File was uploaded before, show status
+        st.info(f"📎 {get_text('file_loaded', lang)}: {st.session_state.uploaded_file_name} ({len(st.session_state.uploaded_file_content)} {get_text('characters', lang)})")
+
+    # Get file content from session state
+    file_content = st.session_state.uploaded_file_content
 
     if execute_button and (task or file_content):
         # Combine task description with file content
