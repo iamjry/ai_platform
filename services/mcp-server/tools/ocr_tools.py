@@ -204,7 +204,7 @@ async def ocr_get_status_tool() -> str:
                 "name": "EasyOCR",
                 "type": "cpu",
                 "available": True,
-                "languages": ["en", "zh_tra", "zh_sim", "ja", "ko", "fr", "de", "es", "pt"]
+                "languages": ["en", "ch_tra", "ch_sim", "ja", "ko", "fr", "de", "es", "pt"]
             })
         except ImportError:
             status["backends"].append({

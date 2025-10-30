@@ -67,7 +67,10 @@ class OCRParser:
             confidence_threshold: Minimum confidence for OCR results
         """
         self.backend = backend
-        self.languages = languages or ['en', 'zh_tra', 'zh_sim']  # English, Traditional Chinese, Simplified Chinese
+        # Default to English only for maximum compatibility
+        # Users can specify other languages: ch_tra, ch_sim, ja, ko, etc.
+        # Note: Some languages like Chinese require English to be included
+        self.languages = languages or ['en']
         self.use_gpu = use_gpu
         self.confidence_threshold = confidence_threshold
         self.ocr_engine = None
