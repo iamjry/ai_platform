@@ -1,6 +1,7 @@
 """
 Contract Parser Utility
 Handles parsing of contract documents in various formats (PDF, DOCX, TXT)
+Includes OCR support for scanned documents via ocr_parser module
 """
 
 import os
@@ -13,10 +14,20 @@ logger = logging.getLogger(__name__)
 
 
 class ContractParser:
-    """Parse and extract content from contract documents"""
+    """Parse and extract content from contract documents with OCR support"""
 
-    def __init__(self):
+    def __init__(self, enable_ocr: bool = True, use_gpu_ocr: bool = False):
+        """
+        Initialize contract parser
+
+        Args:
+            enable_ocr: Whether to enable OCR for scanned PDFs (default: True)
+            use_gpu_ocr: Whether to use GPU-based OCR (DeepSeek-OCR) if available
+        """
         self.supported_formats = ['.pdf', '.docx', '.txt', '.md']
+        self.enable_ocr = enable_ocr
+        self.use_gpu_ocr = use_gpu_ocr
+        self._ocr_parser = None
 
     def parse_file(self, file_path: str) -> Dict[str, any]:
         """
@@ -63,9 +74,54 @@ class ContractParser:
             logger.error(f"Error parsing contract file: {str(e)}")
             raise
 
+    def _get_ocr_parser(self):
+        """Lazy-load OCR parser"""
+        if self._ocr_parser is None and self.enable_ocr:
+            try:
+                from utils.ocr_parser import OCRParser, OCRBackend
+
+                # Choose backend based on GPU availability
+                if self.use_gpu_ocr:
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            backend = OCRBackend.DEEPSEEK_OCR
+                            logger.info("Using DeepSeek-OCR (GPU) for scanned documents")
+                        else:
+                            backend = OCRBackend.EASYOCR
+                            logger.info("GPU not available, using EasyOCR for scanned documents")
+                    except ImportError:
+                        backend = OCRBackend.EASYOCR
+                        logger.info("PyTorch not available, using EasyOCR for scanned documents")
+                else:
+                    backend = OCRBackend.EASYOCR
+                    logger.info("Using EasyOCR for scanned documents")
+
+                self._ocr_parser = OCRParser(backend=backend, use_gpu=self.use_gpu_ocr)
+
+            except Exception as e:
+                logger.warning(f"Failed to initialize OCR parser: {e}. OCR will be disabled.")
+                self.enable_ocr = False
+
+        return self._ocr_parser
+
     def _parse_pdf(self, file_path: str) -> str:
-        """Extract text from PDF file"""
+        """Extract text from PDF file with OCR support"""
         try:
+            # First, try OCR parser which intelligently handles both text and scanned PDFs
+            if self.enable_ocr:
+                ocr_parser = self._get_ocr_parser()
+                if ocr_parser:
+                    try:
+                        logger.info(f"Parsing PDF with OCR support: {file_path}")
+                        text = ocr_parser.extract_text_from_pdf(file_path)
+                        if text and len(text.strip()) > 50:
+                            logger.info(f"✓ Successfully extracted {len(text)} characters using OCR parser")
+                            return text.strip()
+                    except Exception as e:
+                        logger.warning(f"OCR parsing failed, falling back to PyPDF2: {e}")
+
+            # Fallback to PyPDF2 for text-based PDFs
             import PyPDF2
 
             text = ""
@@ -74,6 +130,7 @@ class ContractParser:
                 for page in pdf_reader.pages:
                     text += page.extract_text() + "\n"
 
+            logger.info(f"Extracted {len(text)} characters using PyPDF2")
             return text.strip()
 
         except ImportError:
@@ -84,7 +141,7 @@ class ContractParser:
             raise
 
     def _parse_pdf_alternative(self, file_path: str) -> str:
-        """Alternative PDF parser using pdfplumber"""
+        """Alternative PDF parser using pdfplumber with OCR fallback"""
         try:
             import pdfplumber
 
@@ -94,6 +151,16 @@ class ContractParser:
                     page_text = page.extract_text()
                     if page_text:
                         text += page_text + "\n"
+
+            # If very little text extracted, try OCR
+            if self.enable_ocr and len(text.strip()) < 100:
+                logger.info("pdfplumber extracted little text, trying OCR")
+                ocr_parser = self._get_ocr_parser()
+                if ocr_parser:
+                    try:
+                        text = ocr_parser.extract_text_from_pdf(file_path, force_ocr=True)
+                    except Exception as e:
+                        logger.warning(f"OCR fallback failed: {e}")
 
             return text.strip()
 

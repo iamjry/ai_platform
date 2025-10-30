@@ -16,6 +16,7 @@ import base64
 from rag_service import rag_service
 from search_service import search_service
 from tools.contract_review import CONTRACT_REVIEW_TOOLS, review_contract_tool, analyze_clause_tool, compare_contracts_tool
+from tools.ocr_tools import OCR_TOOLS, ocr_extract_pdf_tool, ocr_extract_image_tool, ocr_get_status_tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -191,6 +192,17 @@ class AnalyzeClauseRequest(BaseModel):
 class CompareContractsRequest(BaseModel):
     contract_a: str
     contract_b: str
+
+class OCRExtractPDFRequest(BaseModel):
+    pdf_file: Optional[str] = None
+    pdf_base64: Optional[str] = None
+    force_ocr: bool = False
+    use_gpu: bool = False
+
+class OCRExtractImageRequest(BaseModel):
+    image_file: Optional[str] = None
+    image_base64: Optional[str] = None
+    use_gpu: bool = False
 
 class ToolResponse(BaseModel):
     tools: List[Dict]
@@ -489,6 +501,34 @@ async def list_tools():
                     "contract_a": "string (required)",
                     "contract_b": "string (required)"
                 }
+            },
+            # OCR Tools (3)
+            {
+                "name": "ocr_extract_pdf",
+                "description": "從PDF文件中提取文本（自動檢測掃描或文本型PDF）",
+                "category": "document",
+                "parameters": {
+                    "pdf_file": "string (optional: path to PDF)",
+                    "pdf_base64": "string (optional: base64 encoded PDF)",
+                    "force_ocr": "boolean (optional: force OCR even for text PDFs)",
+                    "use_gpu": "boolean (optional: use GPU-based OCR if available)"
+                }
+            },
+            {
+                "name": "ocr_extract_image",
+                "description": "從圖像文件中提取文本（PNG, JPG等）",
+                "category": "document",
+                "parameters": {
+                    "image_file": "string (optional: path to image)",
+                    "image_base64": "string (optional: base64 encoded image)",
+                    "use_gpu": "boolean (optional: use GPU-based OCR if available)"
+                }
+            },
+            {
+                "name": "ocr_get_status",
+                "description": "獲取OCR服務狀態和可用後端",
+                "category": "system",
+                "parameters": {}
             }
         ]
     }
@@ -1453,6 +1493,71 @@ async def compare_contracts(request: CompareContractsRequest):
         logger.error(f"Compare contracts error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== OCR Tools ====================
+
+@app.post("/tools/ocr_extract_pdf")
+async def ocr_extract_pdf(request: OCRExtractPDFRequest):
+    """從PDF文件中提取文本 - 自動檢測掃描或文本型PDF"""
+    try:
+        result = await ocr_extract_pdf_tool(
+            pdf_file=request.pdf_file,
+            pdf_base64=request.pdf_base64,
+            force_ocr=request.force_ocr,
+            use_gpu=request.use_gpu
+        )
+
+        result_data = json.loads(result)
+        logger.info(f"OCR PDF extraction completed: {result_data.get('file', 'unknown')} ({result_data.get('text_length', 0)} chars)")
+
+        return result_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OCR result: {e}")
+        return {"success": False, "error": "Failed to parse OCR result"}
+    except Exception as e:
+        logger.error(f"OCR PDF extraction error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tools/ocr_extract_image")
+async def ocr_extract_image(request: OCRExtractImageRequest):
+    """從圖像文件中提取文本"""
+    try:
+        result = await ocr_extract_image_tool(
+            image_file=request.image_file,
+            image_base64=request.image_base64,
+            use_gpu=request.use_gpu
+        )
+
+        result_data = json.loads(result)
+        logger.info(f"OCR image extraction completed: {result_data.get('file', 'unknown')} ({result_data.get('text_length', 0)} chars)")
+
+        return result_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OCR result: {e}")
+        return {"success": False, "error": "Failed to parse OCR result"}
+    except Exception as e:
+        logger.error(f"OCR image extraction error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/tools/ocr_get_status")
+async def ocr_get_status():
+    """獲取OCR服務狀態和可用後端"""
+    try:
+        result = await ocr_get_status_tool()
+        result_data = json.loads(result)
+
+        logger.info("OCR status retrieved successfully")
+
+        return result_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse OCR status: {e}")
+        return {"ocr_available": False, "error": "Failed to parse status"}
+    except Exception as e:
+        logger.error(f"OCR status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Enterprise RAG APIs ====================
 
 @app.post("/rag/documents/upload")
@@ -1805,11 +1910,11 @@ async def root():
         "service": "MCP Server",
         "version": "2.0.0",
         "status": "running",
-        "tools_count": 31,
-        "features": ["Enterprise RAG", "Vector Search", "Document Management", "Contract Review"],
+        "tools_count": 34,
+        "features": ["Enterprise RAG", "Vector Search", "Document Management", "Contract Review", "OCR & Document Parsing"],
         "categories": [
             "search", "database", "document", "analysis", "visualization",
             "data_processing", "content", "security", "workflow", "communication",
-            "integration", "execution", "file", "analytics", "finance", "legal", "rag"
+            "integration", "execution", "file", "analytics", "finance", "legal", "rag", "system"
         ]
     }

@@ -4,6 +4,7 @@ model_list:
   litellm_params:
     model: openai/gpt-4
     api_key: os.environ/OPENAI_API_KEY
+  visible: false
 - model_name: gpt-4o
   display_name: GPT-4o
   litellm_params:

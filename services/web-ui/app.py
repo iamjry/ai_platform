@@ -299,7 +299,7 @@ with st.sidebar:
     st.markdown("""
     <div style="text-align: center; margin: 0; padding: 0;">
         <div style="font-size: 2rem; line-height: 1; margin: 0;">🤖</div>
-        <h3 style="margin: 0; padding: 0; color: #1f77b4; font-weight: 700; font-size: 1rem; line-height: 1;">AI Agents Platform</h3>
+        <h3 style="margin: 0; padding: 0; color: #1f77b4; font-weight: 700; font-size: 1rem; line-height: 1;">FENC AI Agents Platform</h3>
     </div>
     """, unsafe_allow_html=True)
 
