@@ -1000,9 +1000,25 @@ with tab2:
 
     if execute_button and (task or file_content):
         # Combine task description with file content
-        combined_task = task
-        if file_content:
+        if file_content and not task.strip():
+            # If only file uploaded without task description, provide default instruction
+            if agent_type == "contract_review":
+                default_instruction = {
+                    "zh-TW": "請審查以下契約內容，提供風險評估、條款分析和建議：",
+                    "zh-CN": "请审查以下合同内容，提供风险评估、条款分析和建议：",
+                    "en": "Please review the following contract, provide risk assessment, clause analysis and recommendations:",
+                    "vi": "Vui lòng xem xét hợp đồng sau, cung cấp đánh giá rủi ro, phân tích điều khoản và khuyến nghị:"
+                }
+                combined_task = f"{default_instruction.get(lang, default_instruction['en'])}\n\n{file_content}"
+            else:
+                # For other agent types, just use the file content
+                combined_task = f"{get_text('file_content', lang)}:\n\n{file_content}"
+        elif file_content:
+            # Both task and file content present
             combined_task = f"{task}\n\n{get_text('file_content', lang)}:\n\n{file_content}"
+        else:
+            # Only task, no file
+            combined_task = task
 
         # Clear the task input after execution starts
         st.session_state.selected_example = ""
