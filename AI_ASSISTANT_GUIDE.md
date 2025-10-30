@@ -15,7 +15,7 @@ Docker-based microservices platform | 11 containers | Python/FastAPI/Streamlit
 ```
 web-ui:          8501  (Streamlit UI - 4 language support)
 agent-service:   8002  (FastAPI - Agent orchestration)
-mcp-server:      8001  (FastAPI - MCP tools, 25+ tools)
+mcp-server:      8001  (FastAPI - MCP tools, 34 tools including OCR)
 litellm:         4000  (LLM proxy - 15+ models)
 ollama:          11434 (Local LLM)
 postgres:        5433  (Main DB)
@@ -26,13 +26,17 @@ rabbitmq:        5672  (Message queue)
 
 ### Critical File Locations
 ```
-services/web-ui/app.py              - Main UI (1500+ lines)
-services/web-ui/i18n.py             - Translations (zh-TW, zh-CN, en, vi)
-services/agent-service/main.py      - Agent orchestration
-services/mcp-server/main.py         - MCP tool registration
-services/mcp-server/tools/          - MCP tool implementations
-config/litellm-config.yaml          - Model configuration
-docker-compose.yml                  - Service definitions
+services/web-ui/app.py                      - Main UI (1500+ lines)
+services/web-ui/i18n.py                     - Translations (zh-TW, zh-CN, en, vi)
+services/agent-service/main.py              - Agent orchestration
+services/mcp-server/main.py                 - MCP tool registration (34 tools)
+services/mcp-server/tools/                  - MCP tool implementations
+services/mcp-server/tools/ocr_tools.py      - OCR tools (NEW)
+services/mcp-server/utils/ocr_parser.py     - OCR engine (NEW)
+services/mcp-server/utils/contract_parser.py - Document parser with OCR
+config/litellm-config.yaml                  - Model configuration
+config/agent_prompts.yaml                   - Agent system prompts (NEW)
+docker-compose.yml                          - Service definitions
 ```
 
 ---
@@ -52,8 +56,9 @@ docker-compose.yml                  - Service definitions
 | Task | Files to Modify | Note |
 |------|----------------|------|
 | Add MCP tool | `mcp-server/tools/new_tool.py`, `mcp-server/main.py` (register) | Follow tool schema |
-| Modify agent prompt | `agent-service/main.py` (agent_prompts dict ~L605) | Also update web-ui |
-| Add agent type | `agent-service/main.py` + `web-ui/app.py` + `web-ui/i18n.py` | 3 files minimum |
+| Modify agent prompt | `config/agent_prompts.yaml` (centralized prompts) | Rebuild agent-service |
+| Add agent type | `config/agent_prompts.yaml` + `web-ui/app.py` + `web-ui/i18n.py` | 3 files minimum |
+| Add OCR language | `mcp-server/utils/ocr_parser.py` (languages param) | English default |
 
 ### Model Configuration
 | Task | Files to Modify | Rebuild Required |
@@ -139,16 +144,19 @@ ai_platform/
 │   ├── mcp-server/          # MCP tools server
 │   │   ├── main.py         # Tool registration
 │   │   ├── tools/          # Tool implementations
-│   │   │   ├── contract_review.py  # Contract Review tools (NEW)
+│   │   │   ├── contract_review.py  # Contract Review tools
+│   │   │   ├── ocr_tools.py        # OCR tools (NEW)
 │   │   ├── utils/          # Utilities
-│   │   │   ├── contract_parser.py  # PDF/DOCX/TXT parser (NEW)
+│   │   │   ├── contract_parser.py  # PDF/DOCX/TXT parser (OCR-enabled)
+│   │   │   ├── ocr_parser.py       # OCR engine (NEW)
 │   │   ├── data/
-│   │   │   ├── risk_patterns.json  # Contract risk patterns (NEW)
+│   │   │   ├── risk_patterns.json  # Contract risk patterns
 │   │   ├── prompts/
-│   │   │   ├── contract_review_template.py  # Contract prompts (NEW)
+│   │   │   ├── contract_review_template.py  # Contract prompts
 │   │   └── requirements.txt
 ├── config/
 │   ├── litellm-config.yaml  # Model definitions (visible field)
+│   ├── agent_prompts.yaml   # Agent system prompts (NEW)
 │   └── prometheus.yml
 ├── docker-compose.yml       # All service definitions
 ├── .env                     # API keys, credentials
@@ -159,7 +167,44 @@ ai_platform/
 
 ## 🎯 RECENT MAJOR CHANGES (2025-10-30)
 
-### 1. Contract Review Agent (NEW)
+### 1. OCR Document Parsing System (NEW - Latest)
+**Files**: `mcp-server/utils/ocr_parser.py` (480 lines), `mcp-server/tools/ocr_tools.py` (350 lines), `config/agent_prompts.yaml`
+
+**Key Integration**: Agents can now extract text from scanned documents and images
+
+**Tools Added**:
+- `ocr_extract_pdf` - Extract text from PDF (auto-detects scanned vs text-based)
+- `ocr_extract_image` - Extract text from images (PNG, JPG, etc.)
+- `ocr_get_status` - Check OCR service status and backends
+
+**Technical Stack**:
+- **EasyOCR** (CPU-based, default): Available immediately, good performance
+- **DeepSeek-OCR** (GPU-based, optional): Best quality, requires CUDA
+- **Auto-detection**: PDFs with <100 chars/page use OCR, others use fast text extraction
+- **Lazy loading**: OCR engine only initialized when first needed
+
+**Agent Integration**:
+- Updated `config/agent_prompts.yaml` with OCR usage guidance
+- General, Research, and Contract Review agents all OCR-aware
+- Agents automatically detect when documents need OCR
+- Seamless integration with existing tools
+
+**Key Features**:
+- Multi-language support (English default, can add Chinese, Japanese, etc.)
+- Base64 encoding support for remote files
+- Intelligent PDF detection (text vs scanned)
+- Graceful degradation (falls back to text extraction if OCR fails)
+
+**Testing**:
+- `verify_agent_ocr_integration.py` - Full integration test (4/4 passing)
+- `test_ocr_simple.sh` - Quick status check
+- `test_ocr_docker.sh` - Docker container test
+- `OCR_TESTING_GUIDE.md` - Complete testing documentation
+- `AGENT_OCR_USAGE.md` - Agent usage guide
+
+**Usage**: Upload scanned PDF to Contract Review agent → Agent auto-uses OCR → Extracted text analyzed
+
+### 2. Contract Review Agent
 **Files**: `mcp-server/tools/contract_review.py`, `mcp-server/utils/contract_parser.py`, `mcp-server/data/risk_patterns.json`, `mcp-server/prompts/contract_review_template.py`
 
 **Location in UI**: Agent Catalog tab (📋 icon), Agent Task dropdown (4th option)
@@ -178,7 +223,7 @@ ai_platform/
 
 **To Modify**: See `mcp-server/data/risk_patterns.json` for patterns
 
-### 2. File Upload in Agent Task Tab (NEW)
+### 3. File Upload in Agent Task Tab
 **Files**: `web-ui/app.py` (lines ~L976-1020)
 
 **Key Implementation**:
@@ -189,7 +234,7 @@ ai_platform/
 
 **Translations Added**: upload_file, file_loaded, characters, file_load_error, file_content
 
-### 3. Agent Type Selector Enhancement
+### 4. Agent Type Selector Enhancement
 **Files**: `web-ui/app.py` (lines ~L941-956)
 
 **Change**: Now shows localized names with icons instead of raw IDs
@@ -202,7 +247,7 @@ agent_options = {
 }
 ```
 
-### 4. Agent Catalog Layout
+### 5. Agent Catalog Layout
 **Files**: `web-ui/app.py` (lines ~L1337-1376)
 
 **Change**: Changed from 3-column to 2x2 grid layout for 4 agents
@@ -222,8 +267,9 @@ agent_options = {
    - agent_configs dict (~L1285): UI catalog card
    - agent_options dict (~L942): Dropdown selector
 
-3. Add to agent-service/main.py:
-   - agent_prompts dict (~L605): System prompt
+3. Add to config/agent_prompts.yaml:
+   - Add new agent_prompts.<type> section with system prompt
+   - Include OCR tool guidance if agent should use OCR
 
 4. Rebuild & restart:
    docker-compose build web-ui agent-service
@@ -289,6 +335,10 @@ docker logs ai-mcp-server --tail 50
 # Verify file in container
 docker exec ai-web-ui grep -c "search_term" /app/app.py
 
+# Check OCR integration
+python3 verify_agent_ocr_integration.py
+curl http://localhost:8001/tools/ocr_get_status | jq .
+
 # Git status
 git status
 git log --oneline -10
@@ -338,10 +388,17 @@ git log --oneline -10
 - [ ] Check mcp-server logs for errors
 
 ### Agent Not Calling Tool
-- [ ] Tool name in system prompt?
+- [ ] Tool name in system prompt (config/agent_prompts.yaml)?
 - [ ] Using function-calling model (GPT-4o, Claude)?
 - [ ] Tool parameters match schema?
 - [ ] Check agent-service logs
+
+### OCR Not Working
+- [ ] EasyOCR installed? Check: `docker exec ai-mcp-server pip list | grep easyocr`
+- [ ] MCP server has OCR tools? `curl http://localhost:8001/tools/list | jq '[.tools[] | select(.name | startswith("ocr_"))]'`
+- [ ] Agent prompts mention OCR? `grep -i ocr config/agent_prompts.yaml`
+- [ ] Run verification: `python3 verify_agent_ocr_integration.py`
+- [ ] First run may take 5-10 min (EasyOCR model download)
 
 ---
 

@@ -334,13 +334,35 @@ curl -X POST http://localhost:8001/rag/search \
 curl http://localhost:8001/rag/stats
 ```
 
-### 2. 添加新模型
+### 2. 使用 OCR 系統 🆕
+```bash
+# 檢查 OCR 狀態
+curl http://localhost:8001/tools/ocr_get_status | jq .
+
+# PDF OCR 提取（自動檢測）
+curl -X POST http://localhost:8001/tools/ocr_extract_pdf \
+  -H "Content-Type: application/json" \
+  -d '{"pdf_file": "/path/to/document.pdf"}' | jq .
+
+# 圖片 OCR 提取
+curl -X POST http://localhost:8001/tools/ocr_extract_image \
+  -H "Content-Type: application/json" \
+  -d '{"image_file": "/path/to/image.png"}' | jq .
+
+# 驗證 Agent 整合
+python3 verify_agent_ocr_integration.py
+
+# 在 Web UI 使用
+# → Agent Tasks → 選擇 Contract Review → 上傳掃描版 PDF
+```
+
+### 3. 添加新模型
 1. 編輯 `config/litellm-config.yaml`
 2. 添加 model_list 條目（model_name, display_name, litellm_params）
 3. 如需 fallback 模式，更新 `services/agent-service/main.py` 的 `model_name_map`
 4. 重啟服務：`docker-compose build agent-service && docker-compose up -d`
 
-### 3. 修改 UI 樣式
+### 4. 修改 UI 樣式
 1. 編輯 `services/web-ui/app.py` 的 CSS 區塊（約第 146 行）
 2. 重建 Web UI：`docker-compose build web-ui && docker-compose up -d web-ui`
 3. 瀏覽器硬刷新（Cmd+Shift+R）
