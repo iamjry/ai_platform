@@ -20,6 +20,7 @@
 3. **Agent 任務** - 工具調用、網頁搜索、知識庫檢索
 4. **文檔管理** - 完整 CRUD、分類、標籤系統
 5. **向量搜索** - Qdrant 驅動的語義搜索
+6. **OCR 解析** - 智能文檔 OCR（EasyOCR/DeepSeek-OCR）
 
 ## 🏗️ 系統架構
 
@@ -115,9 +116,10 @@
     - 自動向量化（sentence-transformers）
     - 語義搜索（Qdrant）
     - 文檔管理 CRUD
-  - 20+ 工具提供（搜索、數據處理、通知等）
+  - 34 工具提供（搜索、數據處理、通知、OCR 等）
   - 向量搜索（Qdrant）
   - 文檔管理（PostgreSQL）
+  - OCR 文檔解析（EasyOCR/DeepSeek-OCR）
   - Redis 緩存
 - **RAG 組件**:
   - **rag_service.py** - 核心 RAG 服務類
@@ -140,6 +142,9 @@
   - `create_task` - 任務創建
   - `analyze_data` - 數據分析
   - `generate_chart` - 圖表生成
+  - `ocr_extract_pdf` - PDF OCR 提取（自動檢測）
+  - `ocr_extract_image` - 圖片 OCR 提取
+  - `ocr_get_status` - OCR 服務狀態
 
 **已修復的 Bug**:
 - ✅ 搜索緩存問題（2025-10）：緩存返回 list 而非 dict，已修正為緩存完整 response 對象
@@ -223,6 +228,40 @@ model_list:
 - **問題**: `pandas==2.0.3` 與 Python 3.11 不兼容
 - **解決**: 改為 `pandas>=2.0.0`
 
+### 6. OCR 文檔解析系統 ✅ 🆕
+- **日期**: 2025-10-30
+- **新功能**:
+  - 整合 DeepSeek-OCR (Hugging Face) 和 EasyOCR 雙後端架構
+  - 智能 PDF 檢測（自動判斷文本型或掃描型 PDF）
+  - 3 個新的 OCR 工具：ocr_extract_pdf, ocr_extract_image, ocr_get_status
+  - Agent 系統整合（General、Research、Contract Review 皆可使用 OCR）
+- **技術棧**:
+  - EasyOCR 1.7.0（CPU-based，即時可用）
+  - pdf2image 1.16.3（PDF 轉圖片）
+  - Pillow 10.2.0（圖片處理）
+  - 支援 DeepSeek-OCR（GPU-based，可選）
+- **智能特性**:
+  - 自動檢測 PDF 類型（<100 字符/頁 = 掃描版）
+  - Lazy loading 機制（按需初始化 OCR 引擎）
+  - 多語言支援（英文預設，可擴展中文、日文等）
+  - Base64 編碼支援（適用於遠端文件）
+- **新增文件**:
+  - `services/mcp-server/utils/ocr_parser.py` - 核心 OCR 解析器（480 行）
+  - `services/mcp-server/tools/ocr_tools.py` - MCP 工具包裝（350 行）
+  - `OCR_TESTING_GUIDE.md` - 完整測試指南
+  - `AGENT_OCR_USAGE.md` - Agent 使用指南
+  - `verify_agent_ocr_integration.py` - 整合驗證腳本
+  - `test_ocr_simple.sh`, `test_ocr_docker.sh` - 測試腳本
+- **修改文件**:
+  - `config/agent_prompts.yaml` - 新增 OCR 工具使用指引
+  - `services/mcp-server/main.py` - 註冊 3 個 OCR 工具（總工具數：34）
+  - `services/mcp-server/utils/contract_parser.py` - 整合 OCR 到契約審查
+  - `services/mcp-server/requirements.txt` - 新增 OCR 依賴
+- **使用方式**:
+  - Web UI → Agent Tasks → Contract Review → 上傳掃描版 PDF
+  - Agent 會自動偵測並使用 OCR 提取文字
+  - 測試驗證：`python3 verify_agent_ocr_integration.py`
+
 ## 🧪 測試
 
 ### 測試文件位置
@@ -231,6 +270,9 @@ model_list:
 - `tests/test_web_search.py` - 網頁搜索功能測試
 - `tests/test_knowledge_base_search.py` - 知識庫搜索檢測測試
 - `tests/test_search.py` - 基本搜索測試
+- `verify_agent_ocr_integration.py` - 🆕 OCR Agent 整合驗證
+- `test_ocr_simple.sh` - 🆕 OCR 快速狀態檢查
+- `test_ocr_docker.sh` - 🆕 OCR Docker 容器測試
 
 ### 運行測試
 ```bash
@@ -240,6 +282,11 @@ python3 tests/test_rag.py
 # 搜索功能測試
 python3 tests/test_web_search.py
 python3 tests/test_all_models_search.py
+
+# OCR 整合測試 🆕
+python3 verify_agent_ocr_integration.py
+bash test_ocr_simple.sh
+bash test_ocr_docker.sh
 ```
 
 ## 🔑 環境變數
