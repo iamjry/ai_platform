@@ -1,0 +1,381 @@
+================================================================================
+                    AGENT CATALOG IMPLEMENTATION SUMMARY
+================================================================================
+
+PROJECT: AI Platform
+ANALYSIS DATE: 2025-10-29
+DOCUMENTATION CREATED: AGENT_CATALOG_GUIDE.md & AGENT_CATALOG_QUICK_REF.md
+
+================================================================================
+                              QUICK FINDINGS
+================================================================================
+
+AGENT CATALOG LOCATION:
+  Frontend: /services/web-ui/app.py (Lines 941-945, 1211-1285)
+  Backend:  /services/agent-service/main.py (Lines 605-696)
+  i18n:     /services/web-ui/i18n.py (Lines 94-102 + translations)
+
+CURRENT AGENTS (3):
+  1. "general"   - 🤖 General Assistant (multi-purpose)
+  2. "research"  - 🔬 Research Assistant (deep research)
+  3. "analysis"  - 📊 Data Analysis (data processing)
+
+SUPPORTING INFRASTRUCTURE:
+  4. Contract review tools already exist in MCP server
+  5. System supports 4 languages: zh-TW, zh-CN, en, vi
+  6. All agents access same 25+ MCP tools
+
+================================================================================
+                        WHERE TO MAKE CHANGES
+================================================================================
+
+TO ADD A NEW AGENT ("contract_review"):
+
+1. WEB-UI FRONTEND (app.py) - 2 edits:
+   
+   Edit #1 - Line 943: Add to dropdown list
+   ─────────────────────────────────────────
+   OLD: ["general", "research", "analysis"]
+   NEW: ["general", "research", "analysis", "contract_review"]
+
+   Edit #2 - Lines 1284-1285: Add to agent_configs dict
+   ─────────────────────────────────────────────────────
+   "contract_review": {
+       "name": get_text("agent_contract_review", lang),
+       "icon": "⚖️",
+       "description": get_text("agent_contract_review_desc", lang),
+       "use_cases": get_text("agent_contract_review_uses", lang),
+       "prompt": """System prompt text here..."""
+   }
+
+2. AGENT SERVICE (agent-service/main.py) - 1 edit:
+   
+   Edit #3 - After line 695: Add to agent_prompts dict
+   ─────────────────────────────────────────────────────
+   "contract_review": """System prompt text here..."""
+
+3. LOCALIZATION (i18n.py) - 12 edits (4 languages × 3 keys):
+   
+   For EACH language section (zh-TW, zh-CN, en, vi):
+   ─────────────────────────────────────────────────
+   "agent_contract_review": "Display Name",
+   "agent_contract_review_desc": "Description",
+   "agent_contract_review_uses": "• Use case 1\n• Use case 2\n• Use case 3"
+
+TOTAL CHANGES: 15 edits across 3 files
+
+================================================================================
+                          HOW IT WORKS (ARCHITECTURE)
+================================================================================
+
+Data Flow:
+──────────
+
+  User selects "contract_review" in Web UI
+              │
+              ↓
+  Web UI sends: POST /agent/execute
+              {
+                "task": "Review contract...",
+                "agent_type": "contract_review",
+                "model": "gpt-4o",
+                ...
+              }
+              │
+              ↓
+  Agent Service receives request
+              │
+              ↓
+  Looks up: agent_prompts["contract_review"]
+              │
+              ↓
+  Gets system prompt for contract review
+              │
+              ↓
+  Calls LLM with:
+  - System Prompt: contract review instructions
+  - User Task: "Review contract..."
+  - Available Tools: 25+ MCP tools (including contract_review)
+              │
+              ↓
+  LLM executes and returns response
+              │
+              ↓
+  Response sent back to Web UI
+              │
+              ↓
+  User sees results
+
+Key Points:
+  • System prompt determines agent behavior
+  • All agents access same tools - prompt is only difference
+  • No API changes needed - just dictionary lookup
+  • Multi-turn conversations supported automatically
+
+================================================================================
+                        DATA STRUCTURES EXPLAINED
+================================================================================
+
+Agent Configuration Dictionary (app.py):
+────────────────────────────────────────
+{
+    "agent_id": {
+        "name": str,              # i18n key → display name
+        "icon": str,              # emoji for UI
+        "description": str,       # i18n key → description
+        "use_cases": str,         # i18n key → features list
+        "prompt": str             # full system prompt
+    }
+}
+
+Agent Request (api call):
+─────────────────────────
+{
+    "task": "what to do",
+    "agent_type": "contract_review",      # selects the system prompt
+    "model": "gpt-4o",
+    "conversation_history": [...],        # for multi-turn
+    "images": [...],                      # for vision models
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "top_k": 40
+}
+
+Agent Response:
+───────────────
+{
+    "result": "AI response text",
+    "steps": [...],                       # execution steps
+    "metadata": {
+        "agent_type": "contract_review",
+        "model_used": "gpt-4o",
+        "tokens_used": 1245,
+        "mcp_usage": {
+            "tools_used": [...],
+            "system_prompt": "..."
+        }
+    }
+}
+
+================================================================================
+                        SYSTEM PROMPT TEMPLATE
+================================================================================
+
+你是一個專業的[ROLE]，擅長[SKILLS]。
+
+你的專長：
+1. [CAPABILITY 1]
+2. [CAPABILITY 2]
+3. [CAPABILITY 3]
+
+工作流程：
+- [STEP 1]
+- [STEP 2]
+- [STEP 3]
+
+重點：[KEY FOCUS AREAS]
+
+================================================================================
+                           KEY INSIGHTS
+================================================================================
+
+1. SYSTEM PROMPT DUPLICATION
+   ├─ Must define prompt in TWO places:
+   │  ├─ app.py (line ~1217): For display in Agents Catalog
+   │  └─ agent-service/main.py (line ~605): For actual LLM execution
+   └─ Keep them IN SYNC - if you change one, change both!
+
+2. TOOL ACCESS IS AUTOMATIC
+   ├─ All agents automatically get access to all MCP tools:
+   │  ├─ contract_review (custom tool)
+   │  ├─ web_search, knowledge_base_search
+   │  ├─ send_email, create_task
+   │  └─ 20+ other tools
+   └─ System prompt just guides which tools to USE
+
+3. LOCALIZATION IS CRITICAL
+   ├─ Must add translations for 4 languages:
+   │  ├─ zh-TW (Traditional Chinese)
+   │  ├─ zh-CN (Simplified Chinese)
+   │  ├─ en (English)
+   │  └─ vi (Vietnamese)
+   └─ Missing translation = fallback to English key name
+
+4. NO API CHANGES NEEDED
+   ├─ Existing /agent/execute endpoint already supports:
+   │  ├─ Any agent type via dictionary lookup
+   │  ├─ Automatic tool calling
+   │  └─ Multi-turn conversations
+   └─ Just add agent to dictionaries!
+
+5. MULTI-TURN SUPPORT
+   ├─ Platform automatically supports multi-turn:
+   │  ├─ Tracks conversation_history
+   │  ├─ Detects if agent needs more info
+   │  └─ Supports iterative refinement
+   └─ Your agent can ask follow-up questions!
+
+================================================================================
+                       RELATED EXISTING CODE
+================================================================================
+
+Contract Review Tools (Already Implemented):
+─────────────────────────────────────────────
+Location: /services/mcp-server/
+
+Files:
+  1. tools/contract_review.py
+     └─ Full ContractReviewer class
+        ├─ review_contract()
+        ├─ analyze_risks()
+        ├─ check_required_clauses()
+        └─ generate_recommendations()
+
+  2. utils/contract_parser.py
+     └─ ContractParser class
+        ├─ parse_contract_text()
+        └─ extract_sections()
+
+  3. prompts/contract_review_template.py
+     └─ Prompt templates
+        ├─ CONTRACT_REVIEW_SYSTEM_PROMPT
+        ├─ get_contract_review_prompt()
+        ├─ get_clause_analysis_prompt()
+        ├─ get_comparison_prompt()
+        └─ get_report_prompt()
+
+  4. data/risk_patterns.json
+     └─ Risk pattern definitions
+        ├─ Critical risks
+        ├─ High risks
+        ├─ Medium risks
+        └─ Patterns database
+
+YOUR NEW AGENT WILL AUTOMATICALLY HAVE ACCESS TO ALL THESE TOOLS!
+
+================================================================================
+                        TESTING CHECKLIST
+================================================================================
+
+Frontend Testing:
+  [ ] Navigate to http://localhost:8501
+  [ ] Go to "👥 Agents Catalog" tab
+  [ ] Verify "contract_review" appears in agent type dropdown
+  [ ] Select it and see description/prompts displayed
+  [ ] Switch languages and verify translations show correctly
+
+Backend Testing:
+  [ ] Start agent service: docker-compose up agent-service
+  [ ] Send test request via curl:
+      curl -X POST http://localhost:8002/agent/execute \
+        -H "Content-Type: application/json" \
+        -d '{"task":"Review contract","agent_type":"contract_review"}'
+  [ ] Verify response contains expected structure
+
+Integration Testing:
+  [ ] Upload contract via Web UI
+  [ ] Select Contract Review agent
+  [ ] Execute task
+  [ ] Verify tool calls are made
+  [ ] Check response quality and formatting
+
+Language Testing:
+  [ ] Switch to each language: zh-TW, zh-CN, en, vi
+  [ ] Verify agent name/description displays correctly
+  [ ] Check that multi-language support works
+
+================================================================================
+                    DOCUMENTATION CREATED
+================================================================================
+
+Two comprehensive documents have been generated:
+
+1. AGENT_CATALOG_GUIDE.md (543 lines, 18KB)
+   ├─ Detailed architecture explanation
+   ├─ Complete file locations and line numbers
+   ├─ Full contract review implementation guide
+   ├─ Code snippets for all required changes
+   ├─ Testing procedures
+   ├─ Troubleshooting tips
+   └─ Key insights about design decisions
+
+2. AGENT_CATALOG_QUICK_REF.md (200 lines, 5.4KB)
+   ├─ Quick reference table of agents
+   ├─ One-page implementation checklist
+   ├─ File locations summary
+   ├─ Data flow diagram
+   ├─ System prompt template
+   ├─ Testing commands
+   └─ Translation key templates
+
+================================================================================
+                      IMPLEMENTATION EFFORT
+================================================================================
+
+Estimated Time to Complete:
+  └─ Adding new agent: 30-45 minutes
+     ├─ Understanding this guide: 5 minutes
+     ├─ Editing 3 files (15 changes): 15 minutes
+     ├─ Translation for 4 languages: 10 minutes
+     └─ Testing: 5-10 minutes
+
+Complexity: LOW
+  ├─ No backend logic changes needed
+  ├─ No database migrations needed
+  ├─ No Docker configuration changes needed
+  ├─ No new dependencies required
+  └─ Just text additions to existing dictionaries
+
+Risk: MINIMAL
+  ├─ Changes are isolated to configuration
+  ├─ No impact on other agents
+  ├─ Easy to rollback (just delete additions)
+  ├─ System prompt can be refined later
+  └─ Tools already exist and tested
+
+================================================================================
+                          NEXT STEPS
+================================================================================
+
+1. READ:
+   ├─ This summary (you're reading it!)
+   ├─ AGENT_CATALOG_GUIDE.md (detailed reference)
+   └─ AGENT_CATALOG_QUICK_REF.md (quick checklist)
+
+2. PREPARE:
+   ├─ Gather contract review system prompt
+   ├─ Prepare translations for 4 languages
+   └─ Test environment ready
+
+3. IMPLEMENT:
+   ├─ Edit app.py (2 locations)
+   ├─ Edit agent-service/main.py (1 location)
+   ├─ Edit i18n.py (4 language sections, 3 keys each)
+   └─ Test each change
+
+4. VERIFY:
+   ├─ Frontend displays new agent
+   ├─ Backend accepts requests
+   ├─ Tools are accessible
+   ├─ Multi-language works
+   └─ Response quality is good
+
+5. COMMIT:
+   ├─ Create git commit with all changes
+   ├─ Write clear commit message
+   └─ Push to repository
+
+================================================================================
+                    ABSOLUTE FILE PATHS (FOR REFERENCE)
+================================================================================
+
+/path/to/your/ai_platform/services/web-ui/app.py
+/path/to/your/ai_platform/services/agent-service/main.py
+/path/to/your/ai_platform/services/web-ui/i18n.py
+/path/to/your/ai_platform/services/mcp-server/tools/contract_review.py
+/path/to/your/ai_platform/AGENT_CATALOG_GUIDE.md
+/path/to/your/ai_platform/AGENT_CATALOG_QUICK_REF.md
+
+================================================================================
+END OF SUMMARY
+================================================================================

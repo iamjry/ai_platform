@@ -178,6 +178,8 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     ports:
       - "8002:8000"
+    volumes:
+      - ./config/agent_prompts.yaml:/app/config/agent_prompts.yaml
     networks:
       - ai-platform
     depends_on:
@@ -207,6 +209,7 @@ services:
       - "8501:8501"
     volumes:
       - ./config/litellm-config.yaml:/app/config/litellm-config.yaml
+      - ./config/agent_prompts.yaml:/app/config/agent_prompts.yaml
       - ./README.md:/app/README.md:ro
       - ./DATABASE_SCHEMA.md:/app/DATABASE_SCHEMA.md:ro
       - ./TEST_RESULTS.md:/app/TEST_RESULTS.md:ro

@@ -4,9 +4,55 @@ import os
 import time
 import base64
 import random
+import yaml
 from io import BytesIO
 from PyPDF2 import PdfReader
 from i18n import LANGUAGES, get_text
+
+# Helper functions for agent prompts configuration
+def load_agent_prompts():
+    """Load agent system prompts from config/agent_prompts.yaml"""
+    prompts_path = "/app/config/agent_prompts.yaml"
+    default_prompts = {
+        "general": "你是一個企業AI助手，可以直接回答問題或使用各種工具來幫助用戶完成任務。",
+        "research": "你是一個專業的研究助手，擅長信息收集、分析和整理。",
+        "analysis": "你是一個數據分析專家，專注於數據處理、分析和可視化。",
+        "contract_review": "你是一個專業的契約審查助手，專注於契約分析、風險評估和合規檢查。"
+    }
+
+    try:
+        if os.path.exists(prompts_path):
+            with open(prompts_path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+                if data and 'agent_prompts' in data:
+                    return data['agent_prompts']
+        return default_prompts
+    except Exception as e:
+        st.error(f"Error loading agent prompts: {e}")
+        return default_prompts
+
+def save_agent_prompts(prompts):
+    """Save agent system prompts to config/agent_prompts.yaml"""
+    prompts_path = "/app/config/agent_prompts.yaml"
+
+    try:
+        data = {
+            "agent_prompts": prompts
+        }
+        with open(prompts_path, 'w', encoding='utf-8') as f:
+            f.write("# Agent System Prompts Configuration\n")
+            f.write("# Last Updated: " + time.strftime("%Y-%m-%d %H:%M:%S") + "\n")
+            f.write("#\n")
+            f.write("# This file contains the system prompts for different agent types.\n")
+            f.write("# Edit these prompts to customize agent behavior.\n")
+            f.write("#\n")
+            f.write("# NOTE: After modifying this file, the changes take effect immediately.\n")
+            f.write("#       Both web-ui and agent-service will reload prompts on next request.\n\n")
+            yaml.safe_dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
+        return True
+    except Exception as e:
+        st.error(f"Error saving agent prompts: {e}")
+        return False
 
 # Initialize session state for language
 if "language" not in st.session_state:

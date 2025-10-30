@@ -15,6 +15,7 @@ import io
 import base64
 from rag_service import rag_service
 from search_service import search_service
+from tools.contract_review import CONTRACT_REVIEW_TOOLS, review_contract_tool, analyze_clause_tool, compare_contracts_tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -177,6 +178,19 @@ class CalculateMetricsRequest(BaseModel):
 class FinancialCalculatorRequest(BaseModel):
     operation: str  # "roi", "npv", "irr"
     values: Dict
+
+class ReviewContractRequest(BaseModel):
+    contract_content: str
+    contract_name: Optional[str] = "Untitled Contract"
+    contract_type: Optional[str] = None
+
+class AnalyzeClauseRequest(BaseModel):
+    clause_text: str
+    context: Optional[str] = ""
+
+class CompareContractsRequest(BaseModel):
+    contract_a: str
+    contract_b: str
 
 class ToolResponse(BaseModel):
     tools: List[Dict]
@@ -446,6 +460,35 @@ async def list_tools():
                 "description": "執行財務計算",
                 "category": "finance",
                 "parameters": {"operation": "string", "values": "object"}
+            },
+            # Contract Review Tools (3)
+            {
+                "name": "review_contract",
+                "description": "全面審查和分析合約的風險、合規性和公平性",
+                "category": "legal",
+                "parameters": {
+                    "contract_content": "string (required)",
+                    "contract_name": "string (optional)",
+                    "contract_type": "string (optional: employment/nda/service/lease/sales/general)"
+                }
+            },
+            {
+                "name": "analyze_clause",
+                "description": "詳細分析特定合約條款",
+                "category": "legal",
+                "parameters": {
+                    "clause_text": "string (required)",
+                    "context": "string (optional)"
+                }
+            },
+            {
+                "name": "compare_contracts",
+                "description": "比較兩份合約並突出關鍵差異",
+                "category": "legal",
+                "parameters": {
+                    "contract_a": "string (required)",
+                    "contract_b": "string (required)"
+                }
             }
         ]
     }
@@ -1332,6 +1375,84 @@ async def financial_calculator(request: FinancialCalculatorRequest):
         logger.error(f"Financial calculator error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# ==================== Contract Review Tools ====================
+
+@app.post("/tools/review_contract")
+async def review_contract(request: ReviewContractRequest):
+    """全面審查合約 - 風險評估、合規性檢查、建議"""
+    try:
+        # Call the contract review tool
+        result = await review_contract_tool(
+            contract_content=request.contract_content,
+            contract_name=request.contract_name,
+            contract_type=request.contract_type,
+            llm_client=None  # LLM client will be initialized within the tool
+        )
+
+        # Parse JSON result
+        result_data = json.loads(result)
+
+        logger.info(f"Contract review completed: {request.contract_name} (Risk Score: {result_data.get('risk_score', {}).get('score', 'N/A')})")
+
+        return result_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse contract review result: {e}")
+        return {"error": "Failed to parse review result", "raw_result": result}
+    except Exception as e:
+        logger.error(f"Review contract error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tools/analyze_clause")
+async def analyze_clause(request: AnalyzeClauseRequest):
+    """詳細分析特定合約條款"""
+    try:
+        # Call the clause analysis tool
+        result = await analyze_clause_tool(
+            clause_text=request.clause_text,
+            context=request.context,
+            llm_client=None  # LLM client will be initialized within the tool
+        )
+
+        # Parse JSON result
+        result_data = json.loads(result)
+
+        logger.info(f"Clause analysis completed")
+
+        return result_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse clause analysis result: {e}")
+        return {"error": "Failed to parse analysis result", "raw_result": result}
+    except Exception as e:
+        logger.error(f"Analyze clause error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tools/compare_contracts")
+async def compare_contracts(request: CompareContractsRequest):
+    """比較兩份合約並突出關鍵差異"""
+    try:
+        # Call the contract comparison tool
+        result = await compare_contracts_tool(
+            contract_a=request.contract_a,
+            contract_b=request.contract_b,
+            llm_client=None  # LLM client will be initialized within the tool
+        )
+
+        # Parse JSON result
+        result_data = json.loads(result)
+
+        logger.info(f"Contract comparison completed")
+
+        return result_data
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse comparison result: {e}")
+        return {"error": "Failed to parse comparison result", "raw_result": result}
+    except Exception as e:
+        logger.error(f"Compare contracts error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # ==================== Enterprise RAG APIs ====================
 
 @app.post("/rag/documents/upload")
@@ -1684,11 +1805,11 @@ async def root():
         "service": "MCP Server",
         "version": "2.0.0",
         "status": "running",
-        "tools_count": 28,
-        "features": ["Enterprise RAG", "Vector Search", "Document Management"],
+        "tools_count": 31,
+        "features": ["Enterprise RAG", "Vector Search", "Document Management", "Contract Review"],
         "categories": [
             "search", "database", "document", "analysis", "visualization",
             "data_processing", "content", "security", "workflow", "communication",
-            "integration", "execution", "file", "analytics", "finance", "rag"
+            "integration", "execution", "file", "analytics", "finance", "legal", "rag"
         ]
     }
