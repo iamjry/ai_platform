@@ -1035,8 +1035,38 @@ with tab2:
                     # Extract text from PDF
                     import PyPDF2
                     import io
-                    pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.read()))
+                    import base64
+
+                    # Read PDF bytes
+                    pdf_bytes = uploaded_file.read()
+                    pdf_reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
                     file_content = "\n\n".join([page.extract_text() for page in pdf_reader.pages])
+
+                    # Check if PDF appears to be scanned (< 100 chars)
+                    if len(file_content.strip()) < 100:
+                        st.info("🔍 偵測到掃描版 PDF，正在使用 OCR 提取文字...")
+                        try:
+                            # Use OCR API
+                            pdf_base64 = base64.b64encode(pdf_bytes).decode('utf-8')
+                            import requests
+
+                            ocr_response = requests.post(
+                                f"{MCP_SERVER_URL}/tools/ocr_extract_pdf",
+                                json={"pdf_base64": pdf_base64, "use_gpu": False},
+                                timeout=120.0
+                            )
+                            if ocr_response.status_code == 200:
+                                ocr_result = ocr_response.json()
+                                if ocr_result.get("success"):
+                                    file_content = ocr_result.get("text", "")
+                                    st.success(f"✅ OCR 成功提取 {len(file_content)} 個字符")
+                                else:
+                                    st.warning(f"⚠️ OCR 失敗: {ocr_result.get('error', '未知錯誤')}")
+                            else:
+                                st.warning(f"⚠️ OCR API 錯誤: {ocr_response.status_code}")
+                        except Exception as ocr_error:
+                            st.warning(f"⚠️ OCR 處理失敗: {str(ocr_error)}，使用基本提取結果")
+
                 elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                     # Extract text from DOCX
                     import docx
