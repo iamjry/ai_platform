@@ -955,6 +955,15 @@ with tab2:
         # Reverse mapping to get the agent_type ID
         agent_type = [k for k, v in agent_options.items() if v == agent_type_display][0]
 
+        # File upload for contracts and documents
+        st.markdown("---")
+        uploaded_file = st.file_uploader(
+            "📎 " + get_text("upload_file", lang),
+            type=['pdf', 'docx', 'txt'],
+            help=get_text("upload_file_help", lang),
+            key="agent_file_upload"
+        )
+
         execute_button = st.button(get_text("execute_task", lang), use_container_width=True)
 
         # Add clear conversation button
@@ -964,7 +973,37 @@ with tab2:
                 st.session_state.agent_messages = []
                 st.rerun()
 
-    if execute_button and task:
+    # Process uploaded file if present
+    file_content = ""
+    if uploaded_file is not None:
+        try:
+            if uploaded_file.type == "application/pdf":
+                # Extract text from PDF
+                import PyPDF2
+                import io
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(uploaded_file.read()))
+                file_content = "\n\n".join([page.extract_text() for page in pdf_reader.pages])
+            elif uploaded_file.type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                # Extract text from DOCX
+                import docx
+                import io
+                doc = docx.Document(io.BytesIO(uploaded_file.read()))
+                file_content = "\n\n".join([paragraph.text for paragraph in doc.paragraphs])
+            elif uploaded_file.type == "text/plain":
+                # Extract text from TXT
+                file_content = uploaded_file.read().decode('utf-8')
+
+            if file_content:
+                st.success(f"✅ {get_text('file_loaded', lang)}: {uploaded_file.name} ({len(file_content)} {get_text('characters', lang)})")
+        except Exception as e:
+            st.error(f"❌ {get_text('file_load_error', lang)}: {str(e)}")
+
+    if execute_button and (task or file_content):
+        # Combine task description with file content
+        combined_task = task
+        if file_content:
+            combined_task = f"{task}\n\n{get_text('file_content', lang)}:\n\n{file_content}"
+
         # Clear the task input after execution starts
         st.session_state.selected_example = ""
         st.session_state.task_input_value = ""
@@ -976,7 +1015,7 @@ with tab2:
                 response = requests.post(
                     f"{AGENT_SERVICE_URL}/agent/execute",
                     json={
-                        "task": task,
+                        "task": combined_task,
                         "agent_type": agent_type,
                         "model": model_choice,
                         "conversation_history": st.session_state.agent_conversation_history,
