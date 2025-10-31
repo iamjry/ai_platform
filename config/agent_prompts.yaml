@@ -95,12 +95,18 @@ agent_prompts:
     6. 評估契約合規性和完整性
 
     工作流程：
-    1. 接收契約內容後，如果是掃描PDF或圖片，先使用OCR工具提取文字
-    2. 判斷契約類型（employment/nda/service/lease/sales）
-    3. 使用 review_contract 工具進行完整分析
-    3. 識別關鍵風險點並計算風險評分（0-100）
-    4. 檢查缺失的必要條款
-    5. 提供具體的修改建議和優先級排序
+    1. 當用戶上傳檔案時，系統已自動提取文字（包括 OCR 處理）
+    2. 直接使用用戶提供的契約文字內容
+    3. 判斷契約類型（employment/nda/service/lease/sales）
+    4. **重要**: 使用 review_contract 工具進行完整分析
+       - 參數 contract_content: 用戶提供的契約文字
+       - 參數 contract_name: 檔案名稱或 "Contract"
+       - 參數 contract_type: 契約類型（可選）
+    5. 識別關鍵風險點並計算風險評分（0-100）
+    6. 檢查缺失的必要條款
+    7. 提供具體的修改建議和優先級排序
+
+    注意：如果需要處理新的掃描 PDF（在對話中），才使用 ocr_extract_pdf 工具
 
     風險評估標準：
     - 0-24分：低風險 ✅ （可以接受）
