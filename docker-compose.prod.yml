@@ -1,0 +1,492 @@
+# Production Docker Compose Configuration
+# Target: Red Hat Enterprise Linux v9 with 2x Nvidia H100 GPUs
+# Optimized for: High performance, GPU acceleration, Production reliability
+
+networks:
+  ai-platform:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
+  qdrant_data:
+  prometheus_data:
+  grafana_data:
+  model_cache:
+  ocr_model_cache:  # Cache for OCR models
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-postgres-prod
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # Production PostgreSQL optimizations
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=C"
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - ai-platform
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    # RHEL 9 specific: disable AppArmor/SELinux conflicts
+    security_opt:
+      - label:disable
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: ai-redis-prod
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 4gb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - ai-platform
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 6G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    security_opt:
+      - label:disable
+
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    container_name: ai-qdrant-prod
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - ai-platform
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 16G
+        reservations:
+          cpus: '2'
+          memory: 8G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    security_opt:
+      - label:disable
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: ai-rabbitmq-prod
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+      RABBITMQ_VM_MEMORY_HIGH_WATERMARK: 0.7
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - ai-platform
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "30m"
+        max-file: "3"
+    security_opt:
+      - label:disable
+
+  # Ollama with GPU support
+  ollama:
+    image: ollama/ollama:0.3.0
+    container_name: ai-ollama-prod
+    ports:
+      - "11434:11434"
+    volumes:
+      - model_cache:/root/.ollama
+    networks:
+      - ai-platform
+    restart: always
+    # GPU Configuration for Ollama (uses GPU 0)
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "30m"
+        max-file: "3"
+    security_opt:
+      - label:disable
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-v1.40.0
+    container_name: ai-litellm-prod
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_API_KEY: ${GEMINI_API_KEY}
+      TAIWAN_LLM_API_KEY: ${TAIWAN_LLM_API_KEY}
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/litellm
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY:-sk-prod-litellm-2024}
+      STORE_MODEL_IN_DB: "True"
+      # Production settings
+      LITELLM_DROP_PARAMS: "True"
+      LITELLM_REQUEST_TIMEOUT: 600
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config/litellm-config.yaml:/app/config.yaml:ro
+    command: --config /app/config.yaml --port 4000 --num_workers 8
+    networks:
+      - ai-platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/readiness')\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    security_opt:
+      - label:disable
+
+  # MCP Server with GPU support for DeepSeek-OCR
+  mcp-server:
+    build:
+      context: ./services/mcp-server
+      dockerfile: Dockerfile.prod  # Production Dockerfile with GPU support
+    container_name: ai-mcp-server-prod
+    environment:
+      POSTGRES_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      QDRANT_URL: http://qdrant:6333
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      SMTP_SERVER: ${SMTP_SERVER}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USERNAME: ${SMTP_USERNAME}
+      SMTP_PASSWORD: ${SMTP_PASSWORD}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN}
+      LINE_DEFAULT_RECIPIENT_ID: ${LINE_DEFAULT_RECIPIENT_ID}
+      TAVILY_API_KEY: ${TAVILY_API_KEY}
+      SERPAPI_API_KEY: ${SERPAPI_API_KEY}
+      # GPU and OCR settings
+      NVIDIA_VISIBLE_DEVICES: "1"
+      NVIDIA_DRIVER_CAPABILITIES: compute,utility
+      CUDA_VISIBLE_DEVICES: "1"
+      # Enable GPU OCR backend
+      ENABLE_GPU_OCR: "true"
+      OCR_BACKEND: "deepseek"  # Use DeepSeek-OCR with GPU
+      OCR_MODEL_CACHE: /app/ocr_models
+      # Production settings
+      WORKERS: "4"
+      WORKER_TIMEOUT: "300"
+    ports:
+      - "8001:8000"
+    volumes:
+      - ocr_model_cache:/app/ocr_models
+    networks:
+      - ai-platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 120s  # Longer startup for GPU model loading
+    restart: always
+    # GPU Configuration for MCP Server (uses GPU 1)
+    runtime: nvidia
+    deploy:
+      resources:
+        limits:
+          cpus: '8'
+          memory: 32G
+        reservations:
+          cpus: '4'
+          memory: 16G
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    security_opt:
+      - label:disable
+
+  agent-service:
+    build:
+      context: ./services/agent-service
+      dockerfile: Dockerfile.prod
+    container_name: ai-agent-service-prod
+    environment:
+      LLM_PROXY_URL: http://litellm:4000
+      MCP_SERVER_URL: http://mcp-server:8000
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER}:${RABBITMQ_DEFAULT_PASS}@rabbitmq:5672
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      # Production settings
+      WORKERS: "4"
+      WORKER_TIMEOUT: "300"
+      LOG_LEVEL: "info"
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./config/agent_prompts.yaml:/app/config/agent_prompts.yaml:ro
+    networks:
+      - ai-platform
+    depends_on:
+      litellm:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '4'
+          memory: 8G
+        reservations:
+          cpus: '2'
+          memory: 4G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "5"
+    security_opt:
+      - label:disable
+
+  web-ui:
+    build:
+      context: ./services/web-ui
+      dockerfile: Dockerfile.prod
+    container_name: ai-web-ui-prod
+    environment:
+      AGENT_SERVICE_URL: http://agent-service:8000
+      LITELLM_URL: http://litellm:4000
+      MCP_SERVER_URL: http://mcp-server:8000
+      # Production settings
+      STREAMLIT_SERVER_PORT: 8501
+      STREAMLIT_SERVER_ADDRESS: 0.0.0.0
+      STREAMLIT_SERVER_ENABLE_CORS: "false"
+      STREAMLIT_SERVER_ENABLE_XSRF_PROTECTION: "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./config/litellm-config.yaml:/app/config/litellm-config.yaml:ro
+      - ./config/agent_prompts.yaml:/app/config/agent_prompts.yaml:ro
+      - ./README.md:/app/README.md:ro
+      - ./DATABASE_SCHEMA.md:/app/DATABASE_SCHEMA.md:ro
+      - ./DEPLOYMENT_GUIDE.md:/app/DEPLOYMENT_GUIDE.md:ro
+    networks:
+      - ai-platform
+    depends_on:
+      agent-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - label:disable
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: ai-prometheus-prod
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - ai-platform
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 4G
+        reservations:
+          cpus: '1'
+          memory: 2G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "3"
+    security_opt:
+      - label:disable
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: ai-grafana-prod
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:3000}
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./config/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./config/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - ai-platform
+    depends_on:
+      - prometheus
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "30m"
+        max-file: "3"
+    security_opt:
+      - label:disable
