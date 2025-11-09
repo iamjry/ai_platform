@@ -1368,6 +1368,9 @@ with tab3:
     st.header(get_text("agents_catalog_header", lang))
     st.caption(get_text("agents_catalog_caption", lang))
 
+    # Load agent prompts from YAML configuration
+    agent_prompts = load_agent_prompts()
+
     # Agent Types Section
     st.subheader(get_text("agent_types", lang))
 
@@ -1377,123 +1380,28 @@ with tab3:
             "icon": "🤖",
             "description": get_text("agent_general_desc", lang),
             "use_cases": get_text("agent_general_uses", lang),
-            "prompt": """你是一個企業AI助手，可以直接回答問題或使用各種工具來幫助用戶完成任務。
-
-重要指南：
-
-📄 **文件分析模式**：
-- 如果用戶上傳了文件（PDF、文本等）並詢問內容，直接分析文件並回答問題
-- 不需要使用工具，直接閱讀提供的文件內容並進行分析
-- 示例：用戶上傳PDF並問"描述這份文件" → 直接分析文件內容並詳細描述
-
-🛠️ **工具使用模式**：
-1. 當用戶要求執行某個操作時（如發送郵件、創建任務、搜索等），請調用相應的工具
-2. 在調用工具之前，檢查是否有所有必需的參數
-3. 如果缺少必需參數（如email地址、subject、body等），不要猜測或使用默認值
-4. 如果信息不足，請禮貌地詢問用戶提供缺少的信息
-5. 一次只詢問缺少的信息，不要問不必要的問題
-6. 收集到所有必需信息後，立即執行操作
-
-示例：
-- 用戶說"send email"但沒有提供收件人 → 詢問收件人email地址
-- 用戶說"send email to john@example.com"但沒有主旨和內容 → 詢問郵件主旨和內容
-- 用戶提供了所有信息 → 直接執行發送郵件"""
+            "prompt": agent_prompts.get("general", "")
         },
         "research": {
             "name": get_text("agent_research", lang),
             "icon": "🔬",
             "description": get_text("agent_research_desc", lang),
             "use_cases": get_text("agent_research_uses", lang),
-            "prompt": """你是一個專業的研究助手，擅長信息收集、分析和整理。
-
-你的專長：
-1. 使用搜索工具（search_knowledge_base, web_search, semantic_search）深入研究主題
-2. 找到相關文檔並提取關鍵信息
-3. 整合多個來源的信息，提供全面的研究報告
-4. 驗證信息的準確性和相關性
-5. 提供引用和來源
-
-工作方式：
-- 收到研究任務時，先規劃搜索策略
-- 使用多個搜索工具交叉驗證信息
-- 整理發現的信息，以結構化方式呈現
-- 必要時使用 summarize_document 工具總結長文檔
-- 提供清晰的研究結論和建議
-
-重點：深度、準確性、來源可靠性"""
+            "prompt": agent_prompts.get("research", "")
         },
         "analysis": {
             "name": get_text("agent_analysis", lang),
             "icon": "📊",
             "description": get_text("agent_analysis_desc", lang),
             "use_cases": get_text("agent_analysis_uses", lang),
-            "prompt": """你是一個數據分析專家，專注於數據處理、分析和可視化。
-
-你的專長：
-1. 使用 analyze_data 工具進行統計分析
-2. 使用 process_csv 處理和清理數據
-3. 使用 generate_chart 創建數據可視化
-4. 使用 calculate_metrics 計算業務指標
-5. 使用 financial_calculator 進行財務分析
-
-工作流程：
-- 理解數據分析需求
-- 檢查數據質量和完整性
-- 選擇適當的分析方法
-- 生成清晰的圖表和報表
-- 提供數據驅動的見解和建議
-
-重點：數據準確性、分析深度、可視化清晰度、actionable insights"""
+            "prompt": agent_prompts.get("analysis", "")
         },
         "contract_review": {
             "name": get_text("agent_contract_review", lang),
             "icon": "📋",
             "description": get_text("agent_contract_review_desc", lang),
             "use_cases": get_text("agent_contract_review_uses", lang),
-            "prompt": """你是一個專業的契約審查助手，專注於契約分析、風險評估和合規檢查。
-
-你的專長：
-1. 使用 review_contract 工具進行全面的契約審查
-2. 使用 analyze_clause 工具分析特定條款
-3. 使用 compare_contracts 工具比較多份契約
-4. 識別高風險條款和不公平條件
-5. 評估契約合規性和完整性
-
-工作流程：
-1. 接收契約內容後，先判斷契約類型（employment/nda/service/lease/sales）
-2. 使用 review_contract 工具進行完整分析
-3. 識別關鍵風險點並計算風險評分（0-100）
-4. 檢查缺失的必要條款
-5. 提供具體的修改建議和優先級排序
-
-風險評估標準：
-- 0-24分：低風險 ✅ （可以接受）
-- 25-49分：中等風險 ⚠️ （需要仔細審查）
-- 50-74分：高風險 🔴 （建議協商修改）
-- 75-100分：極高風險 🚨 （存在重大問題）
-
-重點關注：
-- 無限責任條款
-- 永久性義務
-- 放棄權利條款
-- 單方面決定權
-- 過於寬泛的競業禁止
-- 自動續約條款
-- 模糊不清的用語
-
-輸出格式：
-1. 契約摘要（類型、當事人、關鍵條款）
-2. 風險評分及等級
-3. 具體風險分析（按嚴重程度分類）
-4. 缺失條款清單
-5. 優先級排序的建議事項
-
-重要提醒：
-- 此工具提供初步分析，不能替代專業法律諮詢
-- 對於高價值或複雜契約，建議諮詢專業律師
-- 分析基於一般法律原則，不針對特定司法管轄區
-
-請使用清晰、專業的語言，確保用戶能夠理解風險並採取行動。"""
+            "prompt": agent_prompts.get("contract_review", "")
         }
     }
 
@@ -1509,15 +1417,37 @@ with tab3:
             st.markdown(f"**{get_text('use_cases', lang)}:**")
             st.markdown(config['use_cases'])
 
-            with st.expander(get_text("view_system_prompt", lang)):
-                st.text_area(
+            with st.expander(get_text("view_system_prompt", lang), expanded=False):
+                # Editable text area for system prompt
+                edited_prompt = st.text_area(
                     label="",
                     value=config['prompt'],
-                    height=200,
-                    disabled=True,
+                    height=300,
+                    disabled=False,
                     label_visibility="collapsed",
-                    key=f"prompt_{agent_id}"
+                    key=f"prompt_{agent_id}",
+                    help="編輯此系統提示詞並點擊保存按鈕"
                 )
+
+                # Save button
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("💾 保存", key=f"save_{agent_id}", type="primary"):
+                        # Update the prompts dictionary
+                        updated_prompts = load_agent_prompts()
+                        updated_prompts[agent_id] = edited_prompt
+
+                        # Save to YAML file
+                        if save_agent_prompts(updated_prompts):
+                            st.success(f"✅ {config['name']} 系統提示詞已保存！")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("❌ 保存失敗，請稍後再試")
+
+                with col2:
+                    # Show last modified time
+                    st.caption("💡 修改後點擊保存按鈕，變更將立即生效")
 
     # Second row: Analysis and Contract Review
     cols_row2 = st.columns(2)
@@ -1528,15 +1458,37 @@ with tab3:
             st.markdown(f"**{get_text('use_cases', lang)}:**")
             st.markdown(config['use_cases'])
 
-            with st.expander(get_text("view_system_prompt", lang)):
-                st.text_area(
+            with st.expander(get_text("view_system_prompt", lang), expanded=False):
+                # Editable text area for system prompt
+                edited_prompt = st.text_area(
                     label="",
                     value=config['prompt'],
-                    height=200,
-                    disabled=True,
+                    height=300,
+                    disabled=False,
                     label_visibility="collapsed",
-                    key=f"prompt_{agent_id}"
+                    key=f"prompt_{agent_id}",
+                    help="編輯此系統提示詞並點擊保存按鈕"
                 )
+
+                # Save button
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("💾 保存", key=f"save_{agent_id}", type="primary"):
+                        # Update the prompts dictionary
+                        updated_prompts = load_agent_prompts()
+                        updated_prompts[agent_id] = edited_prompt
+
+                        # Save to YAML file
+                        if save_agent_prompts(updated_prompts):
+                            st.success(f"✅ {config['name']} 系統提示詞已保存！")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("❌ 保存失敗，請稍後再試")
+
+                with col2:
+                    # Show last modified time
+                    st.caption("💡 修改後點擊保存按鈕，變更將立即生效")
 
     st.divider()
 
