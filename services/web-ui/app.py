@@ -67,9 +67,59 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Add Material Icons support
+st.markdown("""
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<style>
+    .material-symbols-outlined, .material-symbols-rounded {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        vertical-align: middle;
+        display: inline-block;
+    }
+
+    .icon-sm { font-size: 18px; }
+    .icon-md { font-size: 24px; }
+    .icon-lg { font-size: 36px; }
+    .icon-xl { font-size: 48px; }
+
+    .icon-filled { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+    .icon-primary { color: #1f77b4; }
+    .icon-success { color: #2ca02c; }
+    .icon-warning { color: #ff7f0e; }
+    .icon-error { color: #d62728; }
+</style>
+""", unsafe_allow_html=True)
+
 AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "http://agent-service:8000")
 LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:4000")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
+
+# Helper function for Material Icons
+def mi(icon_name, size="md", filled=False, color=None, style="outlined"):
+    """
+    Generate Material Icon HTML
+
+    Args:
+        icon_name: Name of the icon (e.g., 'home', 'settings', 'check_circle')
+        size: Icon size - 'sm' (18px), 'md' (24px), 'lg' (36px), 'xl' (48px)
+        filled: Whether to use filled style
+        color: Color class - 'primary', 'success', 'warning', 'error', or custom hex
+        style: Icon style - 'outlined' or 'rounded'
+
+    Returns:
+        HTML string for the icon
+    """
+    classes = [f"material-symbols-{style}", f"icon-{size}"]
+    if filled:
+        classes.append("icon-filled")
+    if color in ['primary', 'success', 'warning', 'error']:
+        classes.append(f"icon-{color}")
+
+    class_str = " ".join(classes)
+    style_str = f"color: {color};" if color and color.startswith('#') else ""
+
+    return f'<span class="{class_str}" style="{style_str}">{icon_name}</span>'
 
 # Model context limits (conservative estimates to account for system prompt and tools)
 MODEL_CONTEXT_LIMITS = {
@@ -296,9 +346,9 @@ st.markdown("""
 # Sidebar
 with st.sidebar:
     # Logo and Title at top of sidebar
-    st.markdown("""
+    st.markdown(f"""
     <div style="text-align: center; margin: 0; padding: 0;">
-        <div style="font-size: 2rem; line-height: 1; margin: 0;">🤖</div>
+        <div style="font-size: 2rem; line-height: 1; margin: 0;">{mi('smart_toy', size='xl', filled=True, color='primary', style='rounded')}</div>
         <h3 style="margin: 0; padding: 0; color: #1f77b4; font-weight: 700; font-size: 1rem; line-height: 1;">FENC AI Agents Platform</h3>
     </div>
     """, unsafe_allow_html=True)
@@ -1377,28 +1427,28 @@ with tab3:
     agent_configs = {
         "general": {
             "name": get_text("agent_general", lang),
-            "icon": "🤖",
+            "icon": mi('smart_toy', size='lg', filled=True, color='primary', style='rounded'),
             "description": get_text("agent_general_desc", lang),
             "use_cases": get_text("agent_general_uses", lang),
             "prompt": agent_prompts.get("general", "")
         },
         "research": {
             "name": get_text("agent_research", lang),
-            "icon": "🔬",
+            "icon": mi('science', size='lg', filled=True, color='#9c27b0', style='rounded'),
             "description": get_text("agent_research_desc", lang),
             "use_cases": get_text("agent_research_uses", lang),
             "prompt": agent_prompts.get("research", "")
         },
         "analysis": {
             "name": get_text("agent_analysis", lang),
-            "icon": "📊",
+            "icon": mi('bar_chart', size='lg', filled=True, color='#ff9800', style='rounded'),
             "description": get_text("agent_analysis_desc", lang),
             "use_cases": get_text("agent_analysis_uses", lang),
             "prompt": agent_prompts.get("analysis", "")
         },
         "contract_review": {
             "name": get_text("agent_contract_review", lang),
-            "icon": "📋",
+            "icon": mi('description', size='lg', filled=True, color='#4caf50', style='rounded'),
             "description": get_text("agent_contract_review_desc", lang),
             "use_cases": get_text("agent_contract_review_uses", lang),
             "prompt": agent_prompts.get("contract_review", "")
@@ -1412,7 +1462,7 @@ with tab3:
     cols_row1 = st.columns(2)
     for idx, (agent_id, config) in enumerate(agent_items[:2]):
         with cols_row1[idx]:
-            st.markdown(f"### {config['icon']} {config['name']}")
+            st.markdown(f"### {config['icon']} {config['name']}", unsafe_allow_html=True)
             st.caption(config['description'])
             st.markdown(f"**{get_text('use_cases', lang)}:**")
             st.markdown(config['use_cases'])
@@ -1432,28 +1482,29 @@ with tab3:
                 # Save button
                 col1, col2 = st.columns([1, 4])
                 with col1:
-                    if st.button("💾 保存", key=f"save_{agent_id}", type="primary"):
+                    save_text = f"{mi('save', size='sm')} 保存"
+                    if st.button(save_text, key=f"save_{agent_id}", type="primary", help="保存系統提示詞"):
                         # Update the prompts dictionary
                         updated_prompts = load_agent_prompts()
                         updated_prompts[agent_id] = edited_prompt
 
                         # Save to YAML file
                         if save_agent_prompts(updated_prompts):
-                            st.success(f"✅ {config['name']} 系統提示詞已保存！")
+                            st.success(f"{mi('check_circle', color='success')} {config['name']} 系統提示詞已保存！", icon="✅")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("❌ 保存失敗，請稍後再試")
+                            st.error(f"{mi('error', color='error')} 保存失敗，請稍後再試", icon="❌")
 
                 with col2:
                     # Show last modified time
-                    st.caption("💡 修改後點擊保存按鈕，變更將立即生效")
+                    st.caption(f"{mi('info', size='sm', color='primary')} 修改後點擊保存按鈕，變更將立即生效")
 
     # Second row: Analysis and Contract Review
     cols_row2 = st.columns(2)
     for idx, (agent_id, config) in enumerate(agent_items[2:]):
         with cols_row2[idx]:
-            st.markdown(f"### {config['icon']} {config['name']}")
+            st.markdown(f"### {config['icon']} {config['name']}", unsafe_allow_html=True)
             st.caption(config['description'])
             st.markdown(f"**{get_text('use_cases', lang)}:**")
             st.markdown(config['use_cases'])
@@ -1473,22 +1524,23 @@ with tab3:
                 # Save button
                 col1, col2 = st.columns([1, 4])
                 with col1:
-                    if st.button("💾 保存", key=f"save_{agent_id}", type="primary"):
+                    save_text = f"{mi('save', size='sm')} 保存"
+                    if st.button(save_text, key=f"save_{agent_id}", type="primary", help="保存系統提示詞"):
                         # Update the prompts dictionary
                         updated_prompts = load_agent_prompts()
                         updated_prompts[agent_id] = edited_prompt
 
                         # Save to YAML file
                         if save_agent_prompts(updated_prompts):
-                            st.success(f"✅ {config['name']} 系統提示詞已保存！")
+                            st.success(f"{mi('check_circle', color='success')} {config['name']} 系統提示詞已保存！", icon="✅")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error("❌ 保存失敗，請稍後再試")
+                            st.error(f"{mi('error', color='error')} 保存失敗，請稍後再試", icon="❌")
 
                 with col2:
                     # Show last modified time
-                    st.caption("💡 修改後點擊保存按鈕，變更將立即生效")
+                    st.caption(f"{mi('info', size='sm', color='primary')} 修改後點擊保存按鈕，變更將立即生效")
 
     st.divider()
 
