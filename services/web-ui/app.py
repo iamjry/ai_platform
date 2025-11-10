@@ -553,11 +553,11 @@ with st.sidebar:
             st.info(get_text("no_chat_history", lang))
 
 # Main Content
-# Tabs with text-based labels (Streamlit doesn't support HTML in tabs)
+# Tabs with Unicode icons (Material Design inspired)
 tab_labels = {
-    "zh-TW": ["對話", "Agent任務", "Agents目錄", "模型配置", "監控", "知識庫", "文檔", "關於"],
-    "zh-CN": ["对话", "Agent任务", "Agents目录", "模型配置", "监控", "知识库", "文档", "关于"],
-    "en": ["Chat", "Agent Tasks", "Agents Catalog", "Models", "Monitor", "Knowledge", "Docs", "About"]
+    "zh-TW": ["💬 對話", "🤖 Agent任務", "👥 Agents目錄", "⚙️ 模型配置", "📊 監控", "📚 知識庫", "📄 文檔", "ℹ️ 關於"],
+    "zh-CN": ["💬 对话", "🤖 Agent任务", "👥 Agents目录", "⚙️ 模型配置", "📊 监控", "📚 知识库", "📄 文档", "ℹ️ 关于"],
+    "en": ["💬 Chat", "🤖 Agent Tasks", "👥 Agents Catalog", "⚙️ Models", "📊 Monitor", "📚 Knowledge", "📄 Docs", "ℹ️ About"]
 }
 
 tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(tab_labels.get(lang, tab_labels["zh-TW"]))
