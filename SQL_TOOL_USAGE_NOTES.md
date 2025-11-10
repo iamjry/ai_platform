@@ -9,21 +9,24 @@ SQL 資料庫查詢工具的功能會因所選模型而異：
 #### ✅ 推薦模型（支援完整功能）
 這些模型支援 OpenAI 格式的 Function Calling，可以執行多步驟 SQL 查詢流程：
 
-1. **Claude 3.5 Sonnet** ⭐ 最推薦
-   - 最強的 SQL 生成能力
+1. **Claude 3 Opus** ⭐ 最推薦（Claude 3.5 Sonnet 目前不可用）
+   - 最強的推理和 SQL 生成能力
    - 可以理解複雜查詢需求
    - 自動執行：list tables → get schema → generate SQL → execute query
    - 提供詳細的數據分析和洞察
+   - **注意**: 回應速度較慢，成本較高
 
-2. **Claude 3 Haiku**
+2. **Claude 3 Haiku** ⭐ 推薦用於日常查詢
    - 速度快，成本低
    - SQL 生成能力良好
    - 適合簡單到中等複雜度的查詢
+   - 最佳性價比選擇
 
-3. **GPT-4 系列** (gpt-4, gpt-4o, gpt-4-turbo)
+3. **GPT-4 系列** (gpt-4, gpt-4o, gpt-4-turbo, gpt-4o-mini)
    - Function calling 支援良好
    - SQL 生成能力強
    - 適合需要詳細解釋的場景
+   - GPT-4o-mini 是快速且經濟的選擇
 
 #### ⚠️ 功能受限模型
 這些模型不支援 Function Calling，只能執行單步驟工具調用：
@@ -45,8 +48,10 @@ SQL 資料庫查詢工具的功能會因所選模型而異：
 ### 方案 A: 使用 Claude 模型（推薦）
 
 **步驟**:
-1. 在 Web UI 聊天頁面選擇模型：**Claude 3.5 Sonnet**
+1. 在 Web UI 聊天頁面選擇模型：**Claude 3 Opus** 或 **Claude 3 Haiku**
 2. 直接問問題，無需關心技術細節
+
+**注意**: Claude 3.5 Sonnet 和 Claude 3 Sonnet 目前因 API 訂閱限制而不可用。請使用 Claude 3 Opus（最強）或 Claude 3 Haiku（最快）。
 
 **範例問題**:
 ```
@@ -230,8 +235,9 @@ SO-2025-0014 | 日月光半導體 | 2025-03-25 | manufacturing | unpaid | 523687
 ## 最佳實踐
 
 ### 1. 模型選擇
-- 複雜 SQL 查詢 → **Claude 3.5 Sonnet**
-- 簡單查詢 → Claude 3 Haiku 或 GPT-4
+- 複雜 SQL 查詢 → **Claude 3 Opus**
+- 簡單到中等查詢 → **Claude 3 Haiku**（推薦，最佳性價比）
+- 快速查詢 → GPT-4o-mini 或 Claude 3 Haiku
 - 只查看結構 → 任何模型都可以
 
 ### 2. 提問技巧
@@ -253,10 +259,10 @@ SO-2025-0014 | 日月光半導體 | 2025-03-25 | manufacturing | unpaid | 523687
 | 任務類型 | 推薦模型 | 難度 | 預期執行時間 |
 |---------|---------|------|------------|
 | 查看表結構 | 任何模型 | ⭐ | < 1 秒 |
-| 簡單查詢（單表） | Claude Haiku | ⭐⭐ | 2-5 秒 |
-| JOIN 查詢（多表） | Claude Sonnet | ⭐⭐⭐ | 5-10 秒 |
-| 聚合分析 | Claude Sonnet | ⭐⭐⭐ | 5-10 秒 |
-| 複雜分析（CTE） | Claude Sonnet | ⭐⭐⭐⭐ | 10-15 秒 |
+| 簡單查詢（單表） | Claude 3 Haiku | ⭐⭐ | 2-5 秒 |
+| JOIN 查詢（多表） | Claude 3 Haiku | ⭐⭐⭐ | 5-10 秒 |
+| 聚合分析 | Claude 3 Opus | ⭐⭐⭐ | 8-15 秒 |
+| 複雜分析（CTE） | Claude 3 Opus | ⭐⭐⭐⭐ | 15-25 秒 |
 
 ---
 
