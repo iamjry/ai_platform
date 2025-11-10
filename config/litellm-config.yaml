@@ -26,15 +26,17 @@ model_list:
     model: anthropic/claude-3-opus-20240229
     api_key: os.environ/ANTHROPIC_API_KEY
 - model_name: claude-3-sonnet
-  display_name: Claude 3 Sonnet
+  display_name: Claude 3 Sonnet (unavailable)
   litellm_params:
     model: anthropic/claude-3-sonnet-20240229
     api_key: os.environ/ANTHROPIC_API_KEY
+  visible: false
 - model_name: claude-3-5-sonnet
-  display_name: Claude 3.5 Sonnet
+  display_name: Claude 3.5 Sonnet (unavailable - use Claude 3 Opus instead)
   litellm_params:
-    model: anthropic/claude-3-5-sonnet-20240620
+    model: anthropic/claude-3-opus-20240229
     api_key: os.environ/ANTHROPIC_API_KEY
+  visible: false
 - model_name: claude-3-haiku
   display_name: Claude 3 Haiku
   litellm_params:
