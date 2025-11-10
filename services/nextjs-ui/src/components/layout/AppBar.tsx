@@ -14,19 +14,21 @@ import {
   Box,
   Menu,
   MenuItem,
-  useTheme,
+  useTheme as useMuiTheme,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import MoreVertIcon from '@mui/icons-material/MoreVert';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
+import { useTheme } from '@/lib/theme/ThemeContext';
 
 interface AppBarProps {
   onMenuClick: () => void;
 }
 
 export function AppBar({ onMenuClick }: AppBarProps) {
-  const theme = useTheme();
+  const muiTheme = useMuiTheme();
+  const { mode, toggleTheme } = useTheme();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -38,7 +40,7 @@ export function AppBar({ onMenuClick }: AppBarProps) {
   };
 
   const handleThemeToggle = () => {
-    // TODO: Implement theme toggle
+    toggleTheme();
     handleMenuClose();
   };
 
@@ -73,8 +75,8 @@ export function AppBar({ onMenuClick }: AppBarProps) {
         <Box sx={{ flexGrow: 1 }} />
 
         {/* Theme toggle button */}
-        <IconButton color="inherit" onClick={handleThemeToggle} sx={{ mr: 1 }}>
-          {theme.palette.mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
+        <IconButton color="inherit" onClick={toggleTheme} sx={{ mr: 1 }}>
+          {mode === 'dark' ? <Brightness7Icon /> : <Brightness4Icon />}
         </IconButton>
 
         {/* More options menu */}
@@ -95,10 +97,10 @@ export function AppBar({ onMenuClick }: AppBarProps) {
           onClose={handleMenuClose}
         >
           <MenuItem onClick={handleThemeToggle}>
-            {theme.palette.mode === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            {mode === 'dark' ? '淺色模式' : '深色模式'}
           </MenuItem>
-          <MenuItem onClick={handleMenuClose}>Settings</MenuItem>
-          <MenuItem onClick={handleMenuClose}>About</MenuItem>
+          <MenuItem onClick={handleMenuClose}>設置</MenuItem>
+          <MenuItem onClick={handleMenuClose}>關於</MenuItem>
         </Menu>
       </Toolbar>
     </MuiAppBar>
