@@ -67,15 +67,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Add Material Icons support
+# Add Material Icons and Google Fonts support
 st.markdown("""
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
 <style>
-    .material-symbols-outlined, .material-symbols-rounded {
+    /* Apply Google Fonts globally */
+    html, body, [class*="st-"] {
+        font-family: 'Roboto', 'Noto Sans TC', sans-serif !important;
+    }
+
+    /* Material Icons - Black on White */
+    .material-symbols-outlined {
         font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         vertical-align: middle;
         display: inline-block;
+        color: #000000 !important;
     }
 
     .icon-sm { font-size: 18px; }
@@ -84,10 +91,6 @@ st.markdown("""
     .icon-xl { font-size: 48px; }
 
     .icon-filled { font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
-    .icon-primary { color: #1f77b4; }
-    .icon-success { color: #2ca02c; }
-    .icon-warning { color: #ff7f0e; }
-    .icon-error { color: #d62728; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -95,31 +98,26 @@ AGENT_SERVICE_URL = os.getenv("AGENT_SERVICE_URL", "http://agent-service:8000")
 LITELLM_URL = os.getenv("LITELLM_URL", "http://litellm:4000")
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://mcp-server:8000")
 
-# Helper function for Material Icons
-def mi(icon_name, size="md", filled=False, color=None, style="outlined"):
+# Helper function for Material Icons (Black on White)
+def mi(icon_name, size="md", filled=False):
     """
-    Generate Material Icon HTML
+    Generate Material Icon HTML - Black on White style
 
     Args:
         icon_name: Name of the icon (e.g., 'home', 'settings', 'check_circle')
         size: Icon size - 'sm' (18px), 'md' (24px), 'lg' (36px), 'xl' (48px)
         filled: Whether to use filled style
-        color: Color class - 'primary', 'success', 'warning', 'error', or custom hex
-        style: Icon style - 'outlined' or 'rounded'
 
     Returns:
-        HTML string for the icon
+        HTML string for the icon (black color)
     """
-    classes = [f"material-symbols-{style}", f"icon-{size}"]
+    classes = [f"material-symbols-outlined", f"icon-{size}"]
     if filled:
         classes.append("icon-filled")
-    if color in ['primary', 'success', 'warning', 'error']:
-        classes.append(f"icon-{color}")
 
     class_str = " ".join(classes)
-    style_str = f"color: {color};" if color and color.startswith('#') else ""
 
-    return f'<span class="{class_str}" style="{style_str}">{icon_name}</span>'
+    return f'<span class="{class_str}">{icon_name}</span>'
 
 # Model context limits (conservative estimates to account for system prompt and tools)
 MODEL_CONTEXT_LIMITS = {
@@ -348,8 +346,8 @@ with st.sidebar:
     # Logo and Title at top of sidebar
     st.markdown(f"""
     <div style="text-align: center; margin: 0; padding: 0;">
-        <div style="font-size: 2rem; line-height: 1; margin: 0;">{mi('smart_toy', size='xl', filled=True, color='primary', style='rounded')}</div>
-        <h3 style="margin: 0; padding: 0; color: #1f77b4; font-weight: 700; font-size: 1rem; line-height: 1;">FENC AI Agents Platform</h3>
+        <div style="font-size: 2rem; line-height: 1; margin: 0;">{mi('smart_toy', size='xl', filled=True)}</div>
+        <h3 style="margin: 0; padding: 0; color: #000000; font-weight: 700; font-size: 1rem; line-height: 1;">FENC AI Agents Platform</h3>
     </div>
     """, unsafe_allow_html=True)
 
@@ -555,16 +553,14 @@ with st.sidebar:
             st.info(get_text("no_chat_history", lang))
 
 # Main Content
-tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
-    get_text("tab_chat", lang),
-    get_text("tab_agent", lang),
-    get_text("tab_agents_catalog", lang),
-    get_text("tab_models_config", lang),
-    get_text("tab_monitor", lang),
-    get_text("tab_rag", lang),
-    "📚 Documentation",
-    get_text("tab_about", lang)
-])
+# Tabs with text-based labels (Streamlit doesn't support HTML in tabs)
+tab_labels = {
+    "zh-TW": ["對話", "Agent任務", "Agents目錄", "模型配置", "監控", "知識庫", "文檔", "關於"],
+    "zh-CN": ["对话", "Agent任务", "Agents目录", "模型配置", "监控", "知识库", "文档", "关于"],
+    "en": ["Chat", "Agent Tasks", "Agents Catalog", "Models", "Monitor", "Knowledge", "Docs", "About"]
+}
+
+tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs(tab_labels.get(lang, tab_labels["zh-TW"]))
 
 with tab1:
     st.header(get_text("chat_header", lang))
@@ -1427,28 +1423,28 @@ with tab3:
     agent_configs = {
         "general": {
             "name": get_text("agent_general", lang),
-            "icon": mi('smart_toy', size='lg', filled=True, color='primary', style='rounded'),
+            "icon": mi('smart_toy', size='lg', filled=True),
             "description": get_text("agent_general_desc", lang),
             "use_cases": get_text("agent_general_uses", lang),
             "prompt": agent_prompts.get("general", "")
         },
         "research": {
             "name": get_text("agent_research", lang),
-            "icon": mi('science', size='lg', filled=True, color='#9c27b0', style='rounded'),
+            "icon": mi('science', size='lg', filled=True),
             "description": get_text("agent_research_desc", lang),
             "use_cases": get_text("agent_research_uses", lang),
             "prompt": agent_prompts.get("research", "")
         },
         "analysis": {
             "name": get_text("agent_analysis", lang),
-            "icon": mi('bar_chart', size='lg', filled=True, color='#ff9800', style='rounded'),
+            "icon": mi('bar_chart', size='lg', filled=True),
             "description": get_text("agent_analysis_desc", lang),
             "use_cases": get_text("agent_analysis_uses", lang),
             "prompt": agent_prompts.get("analysis", "")
         },
         "contract_review": {
             "name": get_text("agent_contract_review", lang),
-            "icon": mi('description', size='lg', filled=True, color='#4caf50', style='rounded'),
+            "icon": mi('description', size='lg', filled=True),
             "description": get_text("agent_contract_review_desc", lang),
             "use_cases": get_text("agent_contract_review_uses", lang),
             "prompt": agent_prompts.get("contract_review", "")
@@ -1490,15 +1486,15 @@ with tab3:
 
                         # Save to YAML file
                         if save_agent_prompts(updated_prompts):
-                            st.success(f"{mi('check_circle', color='success')} {config['name']} 系統提示詞已保存！", icon="✅")
+                            st.success(f"{mi('check_circle')} {config['name']} 系統提示詞已保存！", icon="✅")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(f"{mi('error', color='error')} 保存失敗，請稍後再試", icon="❌")
+                            st.error(f"{mi('error')} 保存失敗，請稍後再試", icon="❌")
 
                 with col2:
                     # Show last modified time
-                    st.caption(f"{mi('info', size='sm', color='primary')} 修改後點擊保存按鈕，變更將立即生效")
+                    st.caption(f"{mi('info', size='sm')} 修改後點擊保存按鈕，變更將立即生效")
 
     # Second row: Analysis and Contract Review
     cols_row2 = st.columns(2)
@@ -1532,15 +1528,15 @@ with tab3:
 
                         # Save to YAML file
                         if save_agent_prompts(updated_prompts):
-                            st.success(f"{mi('check_circle', color='success')} {config['name']} 系統提示詞已保存！", icon="✅")
+                            st.success(f"{mi('check_circle')} {config['name']} 系統提示詞已保存！", icon="✅")
                             time.sleep(1)
                             st.rerun()
                         else:
-                            st.error(f"{mi('error', color='error')} 保存失敗，請稍後再試", icon="❌")
+                            st.error(f"{mi('error')} 保存失敗，請稍後再試", icon="❌")
 
                 with col2:
                     # Show last modified time
-                    st.caption(f"{mi('info', size='sm', color='primary')} 修改後點擊保存按鈕，變更將立即生效")
+                    st.caption(f"{mi('info', size='sm')} 修改後點擊保存按鈕，變更將立即生效")
 
     st.divider()
 

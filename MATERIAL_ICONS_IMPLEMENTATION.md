@@ -3,26 +3,31 @@
 ## Overview
 This document describes the implementation of Google Material Icons in the FENC AI Agents Platform Web UI, replacing emoji icons with professional Material Design icons.
 
+**Style**: Black icons on white background (monochrome, clean design)
+**Fonts**: Google Fonts (Roboto + Noto Sans TC for better Chinese character support)
+
 ## What Changed
 
 ### 1. Added Material Icons Support
-- Integrated Google Material Symbols (Outlined and Rounded variants)
-- Added custom CSS styling for icon sizes and colors
+- Integrated Google Material Symbols (Outlined variant only)
+- Added Google Fonts: Roboto (Latin) + Noto Sans TC (Traditional Chinese)
+- Added custom CSS styling for icon sizes
+- **All icons are black (#000000) on white background** - clean, professional monochrome design
 - Created helper function `mi()` for easy icon generation
 
 ### 2. Icon Replacements
 
 #### Main Logo
 - **Before**: 🤖 (emoji)
-- **After**: `smart_toy` (Material Icon - rounded, filled, primary color)
+- **After**: `smart_toy` (Material Icon - outlined, filled, black)
 
 #### Agent Type Icons
 | Agent Type | Emoji | Material Icon | Color | Style |
 |------------|-------|---------------|-------|-------|
-| General Assistant | 🤖 | `smart_toy` | Blue (#1f77b4) | Rounded, Filled |
-| Research Assistant | 🔬 | `science` | Purple (#9c27b0) | Rounded, Filled |
-| Analysis Expert | 📊 | `bar_chart` | Orange (#ff9800) | Rounded, Filled |
-| Contract Review | 📋 | `description` | Green (#4caf50) | Rounded, Filled |
+| General Assistant | 🤖 | `smart_toy` | Black (#000000) | Outlined, Filled |
+| Research Assistant | 🔬 | `science` | Black (#000000) | Outlined, Filled |
+| Analysis Expert | 📊 | `bar_chart` | Black (#000000) | Outlined, Filled |
+| Contract Review | 📋 | `description` | Black (#000000) | Outlined, Filled |
 
 #### UI Elements
 - **Save Button**: `save` icon with text
@@ -30,53 +35,70 @@ This document describes the implementation of Google Material Icons in the FENC 
 - **Error Messages**: `error` icon
 - **Info Messages**: `info` icon
 
-### 3. Helper Function
+### 3. Google Fonts Integration
 
 ```python
-def mi(icon_name, size="md", filled=False, color=None, style="outlined"):
+# Added to app.py head section:
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+# Global font application:
+html, body, [class*="st-"] {
+    font-family: 'Roboto', 'Noto Sans TC', sans-serif !important;
+}
+```
+
+**Benefits**:
+- Roboto: Clean, modern sans-serif font (Latin characters)
+- Noto Sans TC: Optimized Traditional Chinese character rendering
+- Better readability and consistency across languages
+
+### 4. Helper Function
+
+```python
+def mi(icon_name, size="md", filled=False):
     """
-    Generate Material Icon HTML
+    Generate Material Icon HTML - Black on White style
 
     Args:
         icon_name: Name of the icon (e.g., 'home', 'settings', 'check_circle')
         size: Icon size - 'sm' (18px), 'md' (24px), 'lg' (36px), 'xl' (48px)
         filled: Whether to use filled style
-        color: Color class - 'primary', 'success', 'warning', 'error', or custom hex
-        style: Icon style - 'outlined' or 'rounded'
 
     Returns:
-        HTML string for the icon
+        HTML string for the icon (always black color)
     """
 ```
 
-### 4. Icon Sizes
+**Note**: All icons are rendered in black (#000000) for a clean, monochrome design.
+
+### 5. Icon Sizes
 - `sm`: 18px (small icons in buttons)
 - `md`: 24px (default size)
 - `lg`: 36px (agent type headers)
 - `xl`: 48px (main logo)
 
-### 5. Color Classes
-- `icon-primary`: Blue (#1f77b4)
-- `icon-success`: Green (#2ca02c)
-- `icon-warning`: Orange (#ff7f0e)
-- `icon-error`: Red (#d62728)
-- Custom hex colors: Use directly (e.g., `#9c27b0`)
+### 6. Icon Style
+**Monochrome Black Design**:
+- All icons use black (#000000) color
+- No color variations (removed color parameter from mi() function)
+- Clean, professional appearance
+- Consistent with Material Design guidelines
 
 ## How to Use
 
 ### Basic Usage
 ```python
-# Simple icon
+# Simple icon (24px, outlined, black)
 mi('home')
 
-# Large filled icon
+# Large filled icon (36px, filled, black)
 mi('settings', size='lg', filled=True)
 
-# Icon with color
-mi('check_circle', color='success')
+# Small icon for buttons (18px, outlined, black)
+mi('save', size='sm')
 
-# Custom colored rounded icon
-mi('science', size='lg', filled=True, color='#9c27b0', style='rounded')
+# Extra large icon for logo (48px, filled, black)
+mi('smart_toy', size='xl', filled=True)
 ```
 
 ### In Streamlit Markdown
@@ -92,11 +114,12 @@ st.caption(f"{mi('info', size='sm', color='primary')} Information message")
 
 ## Available Icon Styles
 
-1. **Outlined** (default): Clean, minimal line icons
-2. **Rounded**: Softer edges, friendly appearance
-3. **Filled**: Solid filled icons for emphasis
-4. **Sharp**: Angular, precise edges
-5. **Two-tone**: Dual-color icons
+**Current Implementation**: Outlined style only
+
+1. **Outlined** (default): Clean, minimal line icons - perfect for professional UI
+2. **Filled** (via parameter): Solid filled icons for emphasis (e.g., logo, primary elements)
+
+**Note**: All styles are rendered in black (#000000) for consistency
 
 ## Benefits
 
@@ -153,25 +176,24 @@ Browse and search icons at: https://fonts.google.com/icons
 - Use `lg` (36px) for section headers
 - Use `xl` (48px) for main branding/logo
 
-### 3. Color Usage
-- Use semantic colors for status:
-  - Success: Green
-  - Warning: Orange
-  - Error: Red
-  - Info: Blue
-- Use brand colors for primary elements
-- Maintain sufficient contrast for accessibility
+### 3. Monochrome Design
+- All icons use black (#000000) color
+- No color coding for semantic meaning
+- Rely on context and text for meaning instead of color
+- Maintains clean, professional, minimalist aesthetic
+- Better accessibility (doesn't rely on color perception)
 
 ### 4. Style Consistency
-- Stick to one primary style (outlined or rounded) throughout the app
-- Use filled variants sparingly for emphasis
-- Avoid mixing too many styles on the same page
+- Use **outlined** style as default throughout the app
+- Use **filled** variants only for primary elements (logo, main actions)
+- All icons are black for maximum consistency
+- No style mixing - maintains clean, unified design
 
 ## Examples in Code
 
 ### Agent Card Header
 ```python
-st.markdown(f"### {mi('smart_toy', size='lg', filled=True, color='primary', style='rounded')} General Assistant", unsafe_allow_html=True)
+st.markdown(f"### {mi('smart_toy', size='lg', filled=True)} General Assistant", unsafe_allow_html=True)
 ```
 
 ### Save Button
@@ -182,12 +204,12 @@ st.button(save_text, type="primary")
 
 ### Success Message
 ```python
-st.success(f"{mi('check_circle', color='success')} Operation completed successfully!")
+st.success(f"{mi('check_circle')} Operation completed successfully!")
 ```
 
 ### Info Caption
 ```python
-st.caption(f"{mi('info', size='sm', color='primary')} Click to expand details")
+st.caption(f"{mi('info', size='sm')} Click to expand details")
 ```
 
 ## Future Enhancements
