@@ -197,16 +197,17 @@ services:
       start_period: 40s
     restart: unless-stopped
 
-  web-ui:
+  # Streamlit UI (Legacy)
+  streamlit-ui:
     build:
       context: ./services/web-ui
       dockerfile: Dockerfile
-    container_name: ai-web-ui
+    container_name: ai-streamlit-ui
     environment:
       AGENT_SERVICE_URL: http://agent-service:8000
       LITELLM_URL: http://litellm:4000
-    ports:
-      - "8501:8501"
+    expose:
+      - "8501"
     volumes:
       - ./config/litellm-config.yaml:/app/config/litellm-config.yaml
       - ./config/agent_prompts.yaml:/app/config/agent_prompts.yaml
@@ -225,6 +226,44 @@ services:
     depends_on:
       agent-service:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Next.js UI (New Material Design 3)
+  nextjs-ui:
+    build:
+      context: ./services/nextjs-ui
+      dockerfile: Dockerfile
+    container_name: ai-nextjs-ui
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: /api
+    expose:
+      - "3000"
+    networks:
+      - ai-platform
+    depends_on:
+      agent-service:
+        condition: service_healthy
+      mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    build:
+      context: ./services/nginx
+      dockerfile: Dockerfile
+    container_name: ai-nginx
+    ports:
+      - "80:80"
+    networks:
+      - ai-platform
+    depends_on:
+      - nextjs-ui
+      - streamlit-ui
+      - agent-service
+      - mcp-server
+      - litellm
     restart: unless-stopped
 
   prometheus:
