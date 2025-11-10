@@ -5,7 +5,7 @@ const nextConfig = {
 
   // Environment variables
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || '/api',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL ?? '',
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost/api',
   },
 
@@ -15,8 +15,14 @@ const nextConfig = {
     formats: ['image/avif', 'image/webp'],
   },
 
-  // API rewrites (for development)
+  // API rewrites (disabled in production, handled by nginx)
   async rewrites() {
+    // In production (Docker), nginx handles the proxying
+    // Only use rewrites in local development
+    if (process.env.NODE_ENV === 'production') {
+      return [];
+    }
+
     return [
       {
         source: '/api/agent/:path*',

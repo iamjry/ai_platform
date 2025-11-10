@@ -14,8 +14,10 @@ import {
   MenuItem,
   Button,
   SelectChangeEvent,
+  CircularProgress,
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import axios from 'axios';
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -23,16 +25,74 @@ interface ModelSelectorProps {
   onClearChat: () => void;
 }
 
-const AVAILABLE_MODELS = [
-  { value: 'claude-3-5-haiku-20241022', label: 'Claude 3.5 Haiku' },
-  { value: 'claude-3-5-sonnet-20241022', label: 'Claude 3.5 Sonnet' },
-  { value: 'gpt-4o', label: 'GPT-4o' },
-  { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-  { value: 'gemini/gemini-1.5-pro-latest', label: 'Gemini 1.5 Pro' },
-  { value: 'gemini/gemini-1.5-flash-latest', label: 'Gemini 1.5 Flash' },
-];
+interface ModelOption {
+  model_name: string;
+  display_name?: string;
+  visible?: boolean;
+}
 
 export function ModelSelector({ selectedModel, onModelChange, onClearChat }: ModelSelectorProps) {
+  const [models, setModels] = React.useState<ModelOption[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  // Load models from config
+  React.useEffect(() => {
+    async function loadModels() {
+      try {
+        // Try to load from litellm config file
+        const response = await axios.get('/config/litellm-config.yaml', {
+          transformResponse: [(data) => data], // Get raw text
+        });
+
+        // Parse YAML manually (simple parsing for model_list)
+        const lines = response.data.split('\n');
+        const modelList: ModelOption[] = [];
+        let currentModel: Partial<ModelOption> = {};
+
+        for (const line of lines) {
+          if (line.trim().startsWith('- model_name:')) {
+            if (currentModel.model_name) {
+              modelList.push(currentModel as ModelOption);
+            }
+            currentModel = { model_name: line.split(':').slice(1).join(':').trim() };
+          } else if (line.trim().startsWith('display_name:')) {
+            currentModel.display_name = line.split(':').slice(1).join(':').trim();
+          } else if (line.trim().startsWith('visible:')) {
+            currentModel.visible = line.split(':').slice(1).join(':').trim() !== 'false';
+          }
+        }
+        if (currentModel.model_name) {
+          modelList.push(currentModel as ModelOption);
+        }
+
+        // Filter visible models
+        const visibleModels = modelList.filter(m => m.visible !== false);
+        setModels(visibleModels);
+
+        // Set first model as default if current selection is invalid
+        if (visibleModels.length > 0 && !visibleModels.find(m => m.model_name === selectedModel)) {
+          onModelChange(visibleModels[0].model_name);
+        }
+      } catch (error) {
+        console.error('Failed to load models from config, using defaults:', error);
+        // Fallback to default models
+        const defaultModels: ModelOption[] = [
+          { model_name: 'claude-3-haiku', display_name: 'Claude 3 Haiku' },
+          { model_name: 'claude-3-opus', display_name: 'Claude 3 Opus' },
+          { model_name: 'gpt-4o', display_name: 'GPT-4o' },
+          { model_name: 'gpt-4o-mini', display_name: 'GPT-4o Mini' },
+          { model_name: 'gemini-1.5-pro', display_name: 'Gemini 1.5 Pro' },
+          { model_name: 'gemini-1.5-flash', display_name: 'Gemini 1.5 Flash' },
+        ];
+        setModels(defaultModels);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadModels();
+  }, [selectedModel, onModelChange]);
+
   const handleChange = (event: SelectChangeEvent) => {
     onModelChange(event.target.value);
   };
@@ -47,12 +107,20 @@ export function ModelSelector({ selectedModel, onModelChange, onClearChat }: Mod
           value={selectedModel}
           label="AI 模型"
           onChange={handleChange}
+          disabled={loading}
         >
-          {AVAILABLE_MODELS.map((model) => (
-            <MenuItem key={model.value} value={model.value}>
-              {model.label}
+          {loading ? (
+            <MenuItem value="" disabled>
+              <CircularProgress size={20} sx={{ mr: 1 }} />
+              載入中...
             </MenuItem>
-          ))}
+          ) : (
+            models.map((model) => (
+              <MenuItem key={model.model_name} value={model.model_name}>
+                {model.display_name || model.model_name}
+              </MenuItem>
+            ))
+          )}
         </Select>
       </FormControl>
 

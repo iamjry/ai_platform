@@ -14,9 +14,9 @@ import { agentApi, type ConversationMessage } from '@/lib/api';
 
 export function ChatInterface() {
   const [messages, setMessages] = React.useState<ConversationMessage[]>([]);
-  const [selectedModel, setSelectedModel] = React.useState<string>('claude-3-5-haiku-20241022');
+  const [selectedModel, setSelectedModel] = React.useState<string>('claude-3-haiku');
   const [isLoading, setIsLoading] = React.useState(false);
-  const [conversationId, setConversationId] = React.useState<string>('');
+  const [conversationHistory, setConversationHistory] = React.useState<Array<{role: string, content: string}>>([]);
 
   const handleSendMessage = async (message: string) => {
     if (!message.trim() || isLoading) return;
@@ -28,77 +28,59 @@ export function ChatInterface() {
       timestamp: new Date().toISOString(),
     };
     setMessages((prev) => [...prev, userMessage]);
+
+    // Update conversation history
+    const newHistory = [...conversationHistory, { role: 'user', content: message }];
+    setConversationHistory(newHistory);
+
     setIsLoading(true);
 
     try {
-      // Execute agent task with streaming
-      let assistantContent = '';
+      // Execute agent task (non-streaming)
+      const response = await agentApi.execute({
+        task: message,
+        model: selectedModel,
+        conversation_history: newHistory,
+        temperature: 0.7,
+        top_p: 0.9,
+        top_k: 40,
+      });
+
+      // Update conversation history with assistant response
+      setConversationHistory((prev) => [
+        ...prev,
+        { role: 'assistant', content: response.result }
+      ]);
+
+      // Add assistant message
       const assistantMessage: ConversationMessage = {
         role: 'assistant',
-        content: '',
+        content: response.result,
         timestamp: new Date().toISOString(),
-        model: selectedModel,
+        model: response.metadata?.model_used || selectedModel,
+        tokens: response.metadata?.total_tokens,
       };
-
-      // Add empty assistant message that will be updated
       setMessages((prev) => [...prev, assistantMessage]);
 
-      await agentApi.executeStream(
-        {
-          task: message,
-          model: selectedModel,
-          conversation_id: conversationId || undefined,
-        },
-        // onChunk
-        (chunk) => {
-          assistantContent += chunk;
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = {
-              ...newMessages[newMessages.length - 1],
-              content: assistantContent,
-            };
-            return newMessages;
-          });
-        },
-        // onComplete
-        (response) => {
-          setConversationId(response.conversation_id);
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = {
-              ...newMessages[newMessages.length - 1],
-              content: response.response,
-              model: response.model_used,
-              tokens: response.total_tokens,
-            };
-            return newMessages;
-          });
-          setIsLoading(false);
-        },
-        // onError
-        (error) => {
-          console.error('Error executing agent:', error);
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = {
-              ...newMessages[newMessages.length - 1],
-              content: `錯誤: ${error.message}`,
-            };
-            return newMessages;
-          });
-          setIsLoading(false);
-        }
-      );
-    } catch (error) {
+      setIsLoading(false);
+    } catch (error: any) {
       console.error('Error sending message:', error);
+
+      // Add error message
+      const errorMessage: ConversationMessage = {
+        role: 'assistant',
+        content: `錯誤: ${error.message || 'Unknown error'}`,
+        timestamp: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+
       setIsLoading(false);
     }
   };
 
   const handleClearChat = () => {
     setMessages([]);
-    setConversationId('');
+    setConversationHistory([]);
   };
 
   return (
