@@ -223,7 +223,11 @@ async def call_mcp_tool(tool_name: str, arguments: Dict) -> Dict:
         endpoint = endpoint(arguments)
         method = "GET"
     else:
-        method = "POST" if not endpoint.startswith("/resources/") else "GET"
+        # Only sql_list_tables uses GET, other SQL tools use POST
+        if tool_name == "sql_list_tables":
+            method = "GET"
+        else:
+            method = "POST" if not endpoint.startswith("/resources/") else "GET"
 
     async with httpx.AsyncClient() as client:
         if method == "GET":
@@ -417,10 +421,15 @@ def detect_tool_intent(task: str) -> Optional[tuple]:
                 table_name = match.group(1) if match.groups() else None
                 return ("sql_get_schema", {"table_name": table_name} if table_name else {})
 
-        # Default to sql_list_tables for general database questions in fallback mode
-        # This helps models without function calling understand the database structure first
-        logger.info(f"SQL query pattern detected - Question: '{task}' - Listing tables first")
-        return ("sql_list_tables", {})
+        # For models without function calling, only list tables if explicitly asked
+        # Don't auto-trigger for every SQL-related question
+        if any(keyword in task_lower for keyword in ["資料庫", "数据库", "database", "資料表", "数据表", "tables"]):
+            logger.info(f"SQL database structure query detected - Question: '{task}' - Listing tables")
+            return ("sql_list_tables", {})
+
+        # For other SQL queries without function calling, provide guidance
+        logger.info(f"SQL query pattern detected but model doesn't support function calling - Question: '{task}'")
+        return None  # Let the model respond with guidance instead of forcing tool call
 
     # Task creation patterns
     if any(keyword in task_lower for keyword in ["創建任務", "建立任務", "create task", "新增任務", "add task"]):

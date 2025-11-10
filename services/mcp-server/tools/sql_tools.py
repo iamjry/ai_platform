@@ -359,8 +359,13 @@ async def sql_list_tables_tool(db_pool: asyncpg.pool.Pool) -> Dict[str, Any]:
 
             tables = []
             for row in rows:
+                # Filter out LiteLLM internal tables
+                table_name = row['table_name']
+                if table_name.startswith('LiteLLM_') or table_name == 'user_sessions':
+                    continue
+
                 table_info = {
-                    "name": row['table_name'],
+                    "name": table_name,
                     "description": row['description'] or "No description",
                     "columns": row['column_count'],
                     "size": row['size']
@@ -368,7 +373,7 @@ async def sql_list_tables_tool(db_pool: asyncpg.pool.Pool) -> Dict[str, Any]:
 
                 # Get approximate row count
                 try:
-                    count_query = f"SELECT COUNT(*) as cnt FROM {row['table_name']}"
+                    count_query = f"SELECT COUNT(*) as cnt FROM {table_name}"
                     count_row = await conn.fetchrow(count_query)
                     table_info['rows'] = count_row['cnt']
                 except:
