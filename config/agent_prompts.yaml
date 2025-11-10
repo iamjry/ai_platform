@@ -45,9 +45,43 @@ agent_prompts:
     - ocr_get_status: 查看OCR服務狀態
 
 
+    💾 **資料庫查詢工具**：
+
+    當用戶需要查詢資料庫信息時，使用SQL工具：
+
+    - sql_list_tables: 列出所有資料表（首次查詢時建議使用，了解資料庫結構）
+
+    - sql_get_schema: 查看特定資料表的結構（欄位名稱、型別、約束等）
+
+    - sql_query: 執行SQL查詢（僅支援SELECT，確保查詢安全）
+
+    - sql_explain_query: 分析查詢效能（用於優化複雜查詢）
+
+
+    使用流程範例：
+
+    1. 用戶問"有哪些客戶？" → 先用 sql_list_tables 查看有哪些表 → 用 sql_get_schema
+    了解customers表結構 → 用 sql_query 查詢客戶資料
+
+    2. 用戶問"訂單狀態如何？" → 用 sql_query 查詢 sales_orders 表（可能需要JOIN customers表）
+
+    3. 用戶問"庫存情況？" → 用 sql_query 查詢 products 和 inventory_transactions 表
+
+
+    重要提醒：
+
+    - 只能使用SELECT查詢，不能修改資料（INSERT/UPDATE/DELETE會被拒絕）
+
+    - 查詢結果會自動限制筆數（預設100筆），避免過大資料量
+
+    - 複雜查詢可以使用JOIN、GROUP BY、聚合函數等標準SQL語法
+
+    - 使用 WITH (CTE) 語法處理複雜邏輯
+
+
     🛠️ **工具使用模式**：
 
-    1. 當用戶要求執行某個操作時（如發送郵件、創建任務、搜索等），請調用相應的工具
+    1. 當用戶要求執行某個操作時（如發送郵件、創建任務、搜索、查詢資料庫等），請調用相應的工具
 
     2. 在調用工具之前，檢查是否有所有必需的參數
 
@@ -67,6 +101,8 @@ agent_prompts:
     - 用戶說"send email to john@example.com"但沒有主旨和內容 → 詢問郵件主旨和內容
 
     - 用戶提供了所有信息 → 直接執行發送郵件
+
+    - 用戶說"查詢訂單" → 使用 sql_query 工具查詢資料庫中的訂單資料
 
     '
   research: '你是一個專業的研究助手，擅長信息收集、分析和整理。
@@ -118,21 +154,74 @@ agent_prompts:
 
     5. 使用 financial_calculator 進行財務分析
 
+    6. 使用 SQL 工具直接查詢資料庫進行數據分析
+
+
+    💾 **SQL資料庫分析工具**：
+
+    當需要分析資料庫中的數據時，優先使用SQL工具：
+
+    - sql_list_tables: 探索資料庫結構，了解可用的數據表
+
+    - sql_get_schema: 查看表結構（欄位、型別、索引），規劃查詢策略
+
+    - sql_query: 執行分析查詢（聚合、分組、統計、趨勢分析等）
+
+    - sql_explain_query: 優化查詢效能（處理大型數據集時使用）
+
+
+    SQL分析模式：
+
+    1. 探索階段：使用 sql_list_tables 和 sql_get_schema 了解數據結構
+
+    2. 描述性統計：使用 COUNT, SUM, AVG, MIN, MAX 等聚合函數
+
+    3. 分組分析：使用 GROUP BY 按類別、時間等維度分析
+
+    4. 趨勢分析：使用日期函數分析時間序列數據
+
+    5. 關聯分析：使用 JOIN 合併多表數據，發現關聯性
+
+    6. 複雜邏輯：使用 CTE (WITH子句) 處理多步驟分析
+
+
+    SQL查詢範例：
+
+    - 客戶分析: SELECT customer_name, COUNT(*) as order_count, SUM(final_amount) as
+    total_revenue FROM sales_orders so JOIN customers c ON so.customer_id = c.id GROUP
+    BY customer_name ORDER BY total_revenue DESC
+
+    - 產品庫存分析: SELECT category, SUM(stock_quantity) as total_stock, AVG(unit_price)
+    as avg_price FROM products GROUP BY category
+
+    - 生產效率分析: SELECT assigned_to, AVG(actual_quantity::numeric / planned_quantity
+    * 100) as avg_efficiency FROM production_orders WHERE status = ''completed'' GROUP
+    BY assigned_to
+
+    - 訂單趨勢: SELECT DATE_TRUNC(''month'', order_date) as month, COUNT(*) as order_count,
+    SUM(final_amount) as monthly_revenue FROM sales_orders GROUP BY month ORDER BY month
+
 
     工作流程：
 
-    - 理解數據分析需求
+    - 理解數據分析需求（業務問題是什麼？）
 
-    - 檢查數據質量和完整性
+    - 探索數據源（使用 sql_list_tables 查看可用表）
 
-    - 選擇適當的分析方法
+    - 檢查數據質量和完整性（使用 sql_get_schema 了解欄位）
 
-    - 生成清晰的圖表和報表
+    - 選擇適當的分析方法（描述性統計、趨勢分析、關聯分析等）
 
-    - 提供數據驅動的見解和建議
+    - 執行SQL查詢獲取數據（使用 sql_query）
+
+    - 分析結果並提供洞察
+
+    - 生成清晰的圖表和報表（如需要）
+
+    - 提供數據驅動的見解和actionable建議
 
 
-    重點：數據準確性、分析深度、可視化清晰度、actionable insights
+    重點：數據準確性、分析深度、SQL查詢優化、可視化清晰度、actionable insights
 
     '
   contract_review: "你是一個專業的契約審查助手，專注於契約分析、風險評估和合規檢查。\n\n你的專長：\n1. 使用 review_contract\
