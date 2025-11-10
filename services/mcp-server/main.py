@@ -17,6 +17,7 @@ from rag_service import rag_service
 from search_service import search_service
 from tools.contract_review import CONTRACT_REVIEW_TOOLS, review_contract_tool, analyze_clause_tool, compare_contracts_tool
 from tools.ocr_tools import OCR_TOOLS, ocr_extract_pdf_tool, ocr_extract_image_tool, ocr_get_status_tool
+from tools.sql_tools import SQL_TOOLS, sql_query_tool, sql_get_schema_tool, sql_list_tables_tool, sql_explain_query_tool
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -529,6 +530,45 @@ async def list_tools():
                 "description": "獲取OCR服務狀態和可用後端",
                 "category": "system",
                 "parameters": {}
+            },
+            # SQL Database Tools (4)
+            {
+                "name": "sql_query",
+                "description": "Execute READ-ONLY SQL queries on the database. Only SELECT statements allowed. Returns query results as list of dictionaries. Use this to query data from tables.",
+                "category": "database",
+                "parameters": {
+                    "query": "string (required) - SQL SELECT query",
+                    "limit": "integer (optional, default 100) - Max rows to return",
+                    "timeout": "integer (optional, default 30) - Query timeout in seconds"
+                },
+                "examples": [
+                    "SELECT * FROM users WHERE created_at > '2024-01-01' LIMIT 10",
+                    "SELECT COUNT(*) as total FROM orders WHERE status = 'completed'",
+                    "SELECT category, COUNT(*) as count FROM products GROUP BY category"
+                ]
+            },
+            {
+                "name": "sql_get_schema",
+                "description": "Get database schema information - tables, columns, types. Use this BEFORE writing queries to understand database structure.",
+                "category": "database",
+                "parameters": {
+                    "table_name": "string (optional) - Specific table to get schema for",
+                    "include_indexes": "boolean (optional, default false) - Include index info"
+                }
+            },
+            {
+                "name": "sql_list_tables",
+                "description": "List all database tables with row counts, sizes, and descriptions.",
+                "category": "database",
+                "parameters": {}
+            },
+            {
+                "name": "sql_explain_query",
+                "description": "Explain SQL query execution plan for performance analysis.",
+                "category": "database",
+                "parameters": {
+                    "query": "string (required) - SQL query to explain"
+                }
             }
         ]
     }
@@ -1556,6 +1596,120 @@ async def ocr_get_status():
         return {"ocr_available": False, "error": "Failed to parse status"}
     except Exception as e:
         logger.error(f"OCR status error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ==================== SQL Database Tools ====================
+
+class SQLQueryRequest(BaseModel):
+    query: str
+    limit: int = 100
+    timeout: int = 30
+
+class SQLGetSchemaRequest(BaseModel):
+    table_name: Optional[str] = None
+    include_indexes: bool = False
+
+class SQLExplainQueryRequest(BaseModel):
+    query: str
+
+@app.post("/tools/sql_query")
+async def sql_query(request: SQLQueryRequest):
+    """Execute a READ-ONLY SQL query on the database"""
+    try:
+        if not db_pool:
+            raise HTTPException(status_code=503, detail="Database not available")
+
+        result = await sql_query_tool(
+            db_pool=db_pool,
+            query=request.query,
+            limit=request.limit,
+            timeout=request.timeout
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+
+        logger.info(f"SQL query executed: {request.query[:100]}... | Rows: {result['rows_returned']}")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"SQL query error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tools/sql_get_schema")
+async def sql_get_schema(request: SQLGetSchemaRequest):
+    """Get database schema information"""
+    try:
+        if not db_pool:
+            raise HTTPException(status_code=503, detail="Database not available")
+
+        result = await sql_get_schema_tool(
+            db_pool=db_pool,
+            table_name=request.table_name,
+            include_indexes=request.include_indexes
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+
+        logger.info(f"Schema retrieved for: {request.table_name or 'all tables'}")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Get schema error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/tools/sql_list_tables")
+async def sql_list_tables():
+    """List all database tables with metadata"""
+    try:
+        if not db_pool:
+            raise HTTPException(status_code=503, detail="Database not available")
+
+        result = await sql_list_tables_tool(db_pool=db_pool)
+
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+
+        logger.info(f"Listed {result['total_tables']} tables")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"List tables error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/tools/sql_explain_query")
+async def sql_explain_query(request: SQLExplainQueryRequest):
+    """Explain SQL query execution plan"""
+    try:
+        if not db_pool:
+            raise HTTPException(status_code=503, detail="Database not available")
+
+        result = await sql_explain_query_tool(
+            db_pool=db_pool,
+            query=request.query
+        )
+
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error"))
+
+        logger.info(f"Query plan explained for: {request.query[:100]}...")
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Explain query error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== Enterprise RAG APIs ====================
