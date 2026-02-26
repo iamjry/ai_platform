@@ -290,7 +290,7 @@ else:
 2. Enable 2-Factor Authentication (required for App Passwords)
 3. Navigate to **Security** → **2-Step Verification** → **App passwords**
 4. Create new app password for "Mail" on "Other device"
-5. Copy the 16-character password (example: `YOUR_APP_PASSWORD_HERE`)
+5. Copy the 16-character password (example: `xxxx xxxx xxxx xxxx`)
 
 #### Step 2: Update Environment Variables
 
@@ -300,11 +300,11 @@ Add SMTP configuration:
 
 ```bash
 # SMTP Email Configuration (for real email sending)
-# Gmail SMTP configured for your-email@gmail.com
+# Gmail SMTP example
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=YOUR_APP_PASSWORD_HERE
+SMTP_PASSWORD=your-app-password-here
 SMTP_FROM_EMAIL=your-email@gmail.com
 ```
 
@@ -350,7 +350,7 @@ docker compose exec mcp-server printenv | grep SMTP
 SMTP_SERVER=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USERNAME=your-email@gmail.com
-SMTP_PASSWORD=YOUR_APP_PASSWORD_HERE
+SMTP_PASSWORD=your-app-password-here
 SMTP_FROM_EMAIL=your-email@gmail.com
 ```
 
