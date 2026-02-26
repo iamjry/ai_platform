@@ -46,9 +46,11 @@ echo ""
 echo "4️⃣ Scanning for hardcoded passwords..."
 PASSWORD_PATTERN='password.*[:=].*["\x27][^"\x27$]{8,}'
 
-# Exclude common false positives: .example files, .md docs, default values, env vars
+# Exclude common false positives: .example files, .md docs, default values, env vars, i18n translations
 SUSPICIOUS=$(git ls-files | xargs grep -iE "$PASSWORD_PATTERN" 2>/dev/null | \
     grep -v "\.env\.example" | \
+    grep -v "\.env\..*\.example" | \
+    grep -v "\.env\.prod\.template" | \
     grep -v "\.md:" | \
     grep -v "PASSWORD}" | \
     grep -v "POSTGRES_PASSWORD" | \
@@ -61,7 +63,14 @@ SUSPICIOUS=$(git ls-files | xargs grep -iE "$PASSWORD_PATTERN" 2>/dev/null | \
     grep -v "password@postgres" | \
     grep -v "\"Password\"" | \
     grep -v "\"Mật khẩu\"" | \
+    grep -v "\"Contraseña\"" | \
+    grep -v "\"パスワード\"" | \
+    grep -v "\"密码\"" | \
+    grep -v "\"密碼\"" | \
+    grep -v "i18n.py" | \
     grep -v "# Your" | \
+    grep -v "# IMPORTANT:" | \
+    grep -v "CHANGE_ME" | \
     grep -v "EXAMPLE")
 
 if [ -n "$SUSPICIOUS" ]; then

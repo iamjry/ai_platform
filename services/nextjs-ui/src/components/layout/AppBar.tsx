@@ -21,6 +21,8 @@ import MoreVertIcon from '@mui/icons-material/MoreVert';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import { useTheme } from '@/lib/theme/ThemeContext';
+import { useI18n } from '@/lib/i18n';
+import { LanguageSwitcher } from '@/components/common/LanguageSwitcher';
 
 interface AppBarProps {
   onMenuClick: () => void;
@@ -29,6 +31,7 @@ interface AppBarProps {
 export function AppBar({ onMenuClick }: AppBarProps) {
   const muiTheme = useMuiTheme();
   const { mode, toggleTheme } = useTheme();
+  const { t } = useI18n();
   const [anchorEl, setAnchorEl] = React.useState<null | HTMLElement>(null);
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
@@ -68,11 +71,16 @@ export function AppBar({ onMenuClick }: AppBarProps) {
 
         {/* App title */}
         <Typography variant="h6" component="div" sx={{ flexGrow: 0, mr: 4 }}>
-          AI Platform
+          {t('main_header')}
         </Typography>
 
         {/* Spacer */}
         <Box sx={{ flexGrow: 1 }} />
+
+        {/* Language switcher */}
+        <Box sx={{ mr: 2, display: { xs: 'none', sm: 'block' } }}>
+          <LanguageSwitcher />
+        </Box>
 
         {/* Theme toggle button */}
         <IconButton color="inherit" onClick={toggleTheme} sx={{ mr: 1 }}>
@@ -97,10 +105,10 @@ export function AppBar({ onMenuClick }: AppBarProps) {
           onClose={handleMenuClose}
         >
           <MenuItem onClick={handleThemeToggle}>
-            {mode === 'dark' ? '淺色模式' : '深色模式'}
+            {mode === 'dark' ? t('settings') + ' - ' + '淺色模式' : t('settings') + ' - ' + '深色模式'}
           </MenuItem>
-          <MenuItem onClick={handleMenuClose}>設置</MenuItem>
-          <MenuItem onClick={handleMenuClose}>關於</MenuItem>
+          <MenuItem onClick={handleMenuClose}>{t('settings')}</MenuItem>
+          <MenuItem onClick={handleMenuClose}>{t('tab_about')}</MenuItem>
         </Menu>
       </Toolbar>
     </MuiAppBar>

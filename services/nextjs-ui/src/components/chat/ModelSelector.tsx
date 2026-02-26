@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import axios from 'axios';
+import { useI18n } from '@/lib/i18n';
 
 interface ModelSelectorProps {
   selectedModel: string;
@@ -32,6 +33,7 @@ interface ModelOption {
 }
 
 export function ModelSelector({ selectedModel, onModelChange, onClearChat }: ModelSelectorProps) {
+  const { t } = useI18n();
   const [models, setModels] = React.useState<ModelOption[]>([]);
   const [loading, setLoading] = React.useState(true);
 
@@ -100,19 +102,19 @@ export function ModelSelector({ selectedModel, onModelChange, onClearChat }: Mod
   return (
     <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
       <FormControl sx={{ minWidth: 250 }}>
-        <InputLabel id="model-select-label">AI 模型</InputLabel>
+        <InputLabel id="model-select-label">{t('select_model')}</InputLabel>
         <Select
           labelId="model-select-label"
           id="model-select"
           value={selectedModel}
-          label="AI 模型"
+          label={t('select_model')}
           onChange={handleChange}
           disabled={loading}
         >
           {loading ? (
             <MenuItem value="" disabled>
               <CircularProgress size={20} sx={{ mr: 1 }} />
-              載入中...
+              {t('checking_status')}
             </MenuItem>
           ) : (
             models.map((model) => (
@@ -130,7 +132,7 @@ export function ModelSelector({ selectedModel, onModelChange, onClearChat }: Mod
         startIcon={<DeleteOutlineIcon />}
         onClick={onClearChat}
       >
-        清除對話
+        {t('clear_chat')}
       </Button>
     </Box>
   );

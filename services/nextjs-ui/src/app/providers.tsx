@@ -1,12 +1,13 @@
 /**
  * Client-side Providers
- * React Query and Zustand configuration
+ * React Query, i18n, and Zustand configuration
  */
 
 'use client';
 
 import * as React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { I18nProvider } from '@/lib/i18n';
 
 /**
  * Create Query Client with default options
@@ -23,12 +24,12 @@ const queryClient = new QueryClient({
 
 /**
  * Providers Component
- * Wraps children with React Query provider
+ * Wraps children with React Query and i18n providers
  */
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <I18nProvider>{children}</I18nProvider>
     </QueryClientProvider>
   );
 }
