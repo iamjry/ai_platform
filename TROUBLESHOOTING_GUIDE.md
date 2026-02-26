@@ -427,7 +427,7 @@ SMTP_FROM_EMAIL=your_email@outlook.com
 ### Problem 4.1: Specific Keywords Required for Email
 
 **Symptom:**
-User prompt: "請幫我寫一封信給 John Doe, email是 your-email@gmail.com, 表達我對他的關心跟祝福, 我是Jerry"
+User prompt: "請幫我寫一封信給 John Doe, email是 your-email@gmail.com, 表達我對他的關心跟祝福, 我是John"
 
 Agent response: Just generates text, doesn't send email
 
